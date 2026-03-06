@@ -15,6 +15,7 @@ import ScriptsPage from './pages/ScriptsPage';
 import TestCaseEditorPage from './pages/TestCaseEditorPage';
 import ReportsPage from './pages/ReportsPage';
 import AgentsPage from './pages/AgentsPage';
+import TestPlansPage from './pages/TestPlansPage';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -42,6 +43,7 @@ function AppRoutes() {
         <Route path="reports" element={<ReportsPage />} />
         <Route path="agents" element={<AgentsPage />} />
         <Route path="suites/:suiteId/testcases/:tcId/editor" element={<TestCaseEditorPage />} />
+        <Route path="projects/:projectId/plans" element={<TestPlansPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

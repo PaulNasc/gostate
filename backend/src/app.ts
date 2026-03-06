@@ -14,6 +14,7 @@ import executionsRoutes from './modules/executions/executions.routes';
 import schedulesRoutes from './modules/schedules/schedules.routes';
 import integrationsRoutes from './modules/integrations/integrations.routes';
 import statsRoutes from './modules/stats/stats.routes';
+import testPlansRoutes from './modules/test-plans/test-plans.routes';
 
 export function createApp() {
   const app = express();
@@ -44,6 +45,7 @@ export function createApp() {
   app.use('/api/schedules', schedulesRoutes);
   app.use('/api/integrations', integrationsRoutes);
   app.use('/api/stats', statsRoutes);
+  app.use('/api/test-plans', testPlansRoutes);
 
   app.use('/api/artifacts/:execId/:filename', (req, res) => {
     const filePath = path.join(__dirname, '..', 'data', 'artifacts', `exec_${req.params.execId}`, req.params.filename);

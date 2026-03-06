@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, suitesApi, testcasesApi, executionsApi, agentsApi } from '../lib/api';
 import { formatDate, statusBadgeClass, statusLabel } from '../lib/utils';
-import { ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, TestTube2, Loader2, FolderOpen, Play, Pencil, PlayCircle } from 'lucide-react';
+import { ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, TestTube2, Loader2, FolderOpen, Play, Pencil, PlayCircle, ClipboardList } from 'lucide-react';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -61,9 +61,18 @@ export default function ProjectDetailPage() {
           <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>{project?.name || '...'}</h1>
           {project?.description && <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>{project.description}</p>}
         </div>
-        <button className="btn-primary flex items-center gap-2 ml-auto" onClick={() => setShowSuiteForm(!showSuiteForm)}>
-          <Plus className="w-4 h-4" /> Nova Suite
-        </button>
+        <div className="flex items-center gap-2 ml-auto">
+          <button
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors border"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+            onClick={() => navigate(`/projects/${projectId}/plans`)}
+          >
+            <ClipboardList className="w-4 h-4" /> Test Plans
+          </button>
+          <button className="btn-primary flex items-center gap-2" onClick={() => setShowSuiteForm(!showSuiteForm)}>
+            <Plus className="w-4 h-4" /> Nova Suite
+          </button>
+        </div>
       </div>
 
       {showSuiteForm && (

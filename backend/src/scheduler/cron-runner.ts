@@ -28,51 +28,113 @@ function runDueSchedules() {
   for (const sched of schedules) {
     if (!isScheduleDue(sched)) continue;
 
+    const adminUser = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get() as any;
+    if (!adminUser) continue;
+
+    const now = new Date().toISOString();
+    const browsers = (() => { try { return JSON.parse(sched.browsers || '["chromium"]'); } catch { return ['chromium']; } })();
+    const browsersJson = JSON.stringify(browsers);
+    const io = getIo();
+
+    // --- Test Plan schedule: dispatch all TCs in the plan ---
+    if (sched.test_plan_id) {
+      const plan = db.prepare('SELECT * FROM test_plans WHERE id = ?').get(sched.test_plan_id) as any;
+      if (!plan) {
+        console.warn(`[CRON] Schedule "${sched.label}" — plano ${sched.test_plan_id} não encontrado`);
+        continue;
+      }
+
+      const tcIds: string[] = (() => { try { return JSON.parse(plan.test_case_ids || '[]'); } catch { return []; } })();
+      if (tcIds.length === 0) {
+        console.warn(`[CRON] Schedule "${sched.label}" — plano sem casos de teste`);
+        continue;
+      }
+
+      const maxParallel = plan.max_parallel || 1;
+      const agents = db.prepare(
+        "SELECT * FROM agents WHERE status = 'online' ORDER BY last_heartbeat DESC LIMIT ?"
+      ).all(maxParallel) as any[];
+
+      if (agents.length === 0) {
+        console.warn(`[CRON] Schedule "${sched.label}" — nenhum agente online`);
+        continue;
+      }
+
+      const executionIds: string[] = [];
+      const dispatchPlan = db.transaction(() => {
+        for (let i = 0; i < tcIds.length; i++) {
+          const tcId = tcIds[i];
+          const tc = db.prepare('SELECT id, steps FROM test_cases WHERE id = ?').get(tcId) as any;
+          if (!tc) continue;
+
+          const agent = agents[i % agents.length];
+          const execId = uuidv4();
+          executionIds.push(execId);
+
+          db.prepare(`
+            INSERT INTO executions (id, test_plan_id, test_case_id, agent_id, triggered_by, status, video_enabled, browsers, created_at)
+            VALUES (?, ?, ?, ?, ?, 'queued', 0, ?, ?)
+          `).run(execId, plan.id, tcId, agent.id, adminUser.id, browsersJson, now);
+
+          db.prepare("UPDATE agents SET status = 'busy' WHERE id = ?").run(agent.id);
+
+          const steps = (() => { try { return JSON.parse(tc.steps || '[]'); } catch { return []; } })();
+          io.to(`agent:${agent.id}`).emit('exec:dispatch', {
+            execId, test_case_id: tcId, script_id: null, scriptContent: '', steps,
+            framework: 'playwright', language: 'js', browsers, videoEnabled: false,
+            timeout: 60000, backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
+          });
+        }
+        db.prepare('UPDATE schedules SET last_run = ? WHERE id = ?').run(now, sched.id);
+      });
+
+      dispatchPlan();
+      io.emit('plan:started', { planId: plan.id, executionIds, total: executionIds.length });
+      console.log(`[CRON] Schedule "${sched.label}" (plano) disparado → ${executionIds.length} execuções`);
+      continue;
+    }
+
+    // --- Single test case schedule ---
     const agent = db.prepare("SELECT * FROM agents WHERE status = 'online' ORDER BY last_heartbeat DESC LIMIT 1").get() as any;
     if (!agent) {
       console.warn(`[CRON] Schedule "${sched.label}" — nenhum agente online`);
       continue;
     }
 
-    const adminUser = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get() as any;
-    if (!adminUser) continue;
-
     const id = uuidv4();
-    const now = new Date().toISOString();
 
-    const browsers = (() => { try { return sched.browsers || '["chromium"]'; } catch { return '["chromium"]'; } })();
-    db.prepare(`
-      INSERT INTO executions (id, test_case_id, agent_id, triggered_by, status, video_enabled, browsers, created_at)
-      VALUES (?, ?, ?, ?, 'queued', 0, ?, ?)
-    `).run(id, sched.test_case_id || null, agent.id, adminUser.id, browsers, now);
+    const dispatchSingle = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO executions (id, test_case_id, agent_id, triggered_by, status, video_enabled, browsers, created_at)
+        VALUES (?, ?, ?, ?, 'queued', 0, ?, ?)
+      `).run(id, sched.test_case_id || null, agent.id, adminUser.id, browsersJson, now);
 
-    db.prepare('UPDATE schedules SET last_run = ? WHERE id = ?').run(now, sched.id);
-    db.prepare('UPDATE agents SET status = ? WHERE id = ?').run('busy', agent.id);
+      db.prepare('UPDATE schedules SET last_run = ? WHERE id = ?').run(now, sched.id);
+      db.prepare("UPDATE agents SET status = 'busy' WHERE id = ?").run(agent.id);
+    });
 
-    const io = getIo();
+    dispatchSingle();
 
-    const runConfig: any = {
+    const steps = (() => {
+      if (!sched.test_case_id) return [];
+      const tc = db.prepare('SELECT steps FROM test_cases WHERE id = ?').get(sched.test_case_id) as any;
+      try { return tc ? JSON.parse(tc.steps || '[]') : []; } catch { return []; }
+    })();
+
+    io.to(`agent:${agent.id}`).emit('exec:dispatch', {
       execId: id,
       test_case_id: sched.test_case_id || null,
       script_id: null,
       scriptContent: '',
-      steps: [],
+      steps,
       framework: 'playwright',
       language: 'js',
-      browsers: (() => { try { return JSON.parse(sched.browsers || '["chromium"]'); } catch { return ['chromium']; } })(),
+      browsers,
       videoEnabled: false,
       timeout: 60000,
       backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
-    };
+    });
 
-    if (sched.test_case_id) {
-      const tc = db.prepare('SELECT * FROM test_cases WHERE id = ?').get(sched.test_case_id) as any;
-      if (tc) {
-        try { runConfig.steps = JSON.parse(tc.steps || '[]'); } catch { runConfig.steps = []; }
-      }
-    }
-
-    io.to(`agent:${agent.id}`).emit('exec:dispatch', runConfig);
     console.log(`[CRON] Schedule "${sched.label}" disparado → exec ${id} (agente: ${agent.name})`);
   }
 }

@@ -105,3 +105,14 @@ export const integrationsApi = {
   remove: (id: string) => api.delete(`/api/integrations/${id}`),
   test: (id: string) => api.post(`/api/integrations/${id}/test`),
 };
+
+export const testPlansApi = {
+  list: (projectId: string) => api.get('/api/test-plans', { params: { project_id: projectId } }),
+  get: (id: string) => api.get(`/api/test-plans/${id}`),
+  create: (data: any) => api.post('/api/test-plans', data),
+  update: (id: string, data: any) => api.put(`/api/test-plans/${id}`, data),
+  remove: (id: string) => api.delete(`/api/test-plans/${id}`),
+  run: (id: string, data?: any) => api.post(`/api/test-plans/${id}/runs`, data || {}),
+  retry: (id: string, data?: any) => api.post(`/api/test-plans/${id}/runs/retry`, data || {}),
+  latestRun: (id: string) => api.get(`/api/test-plans/${id}/runs/latest`),
+};

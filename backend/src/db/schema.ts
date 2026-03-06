@@ -279,6 +279,17 @@ function runMigrations(db: Database.Database): void {
       `
     },
     {
+      version: 7,
+      sql: `
+        CREATE INDEX IF NOT EXISTS idx_executions_test_plan_id ON executions(test_plan_id);
+        CREATE INDEX IF NOT EXISTS idx_executions_test_case_id ON executions(test_case_id);
+        CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status);
+        CREATE INDEX IF NOT EXISTS idx_executions_created_at ON executions(created_at);
+        CREATE INDEX IF NOT EXISTS idx_test_cases_suite_id ON test_cases(suite_id);
+        CREATE INDEX IF NOT EXISTS idx_suites_project_id ON suites(project_id);
+      `
+    },
+    {
       version: 3,
       sql: `
         -- Drop and recreate schedules with updated schema
