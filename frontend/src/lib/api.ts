@@ -107,6 +107,13 @@ export const integrationsApi = {
   test: (id: string) => api.post(`/api/integrations/${id}/test`),
 };
 
+export const projectMembersApi = {
+  list: (projectId: string) => api.get(`/api/projects/${projectId}/members`),
+  add: (projectId: string, data: { email: string; role: string }) => api.post(`/api/projects/${projectId}/members`, data),
+  updateRole: (projectId: string, memberId: string, role: string) => api.put(`/api/projects/${projectId}/members/${memberId}`, { role }),
+  remove: (projectId: string, memberId: string) => api.delete(`/api/projects/${projectId}/members/${memberId}`),
+};
+
 export const environmentsApi = {
   list: (projectId: string) => api.get(`/api/projects/${projectId}/environments`),
   create: (projectId: string, data: any) => api.post(`/api/projects/${projectId}/environments`, data),

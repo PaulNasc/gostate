@@ -16,6 +16,7 @@ import integrationsRoutes from './modules/integrations/integrations.routes';
 import statsRoutes from './modules/stats/stats.routes';
 import testPlansRoutes from './modules/test-plans/test-plans.routes';
 import environmentsRoutes from './modules/environments/environments.routes';
+import projectMembersRoutes from './modules/projects/project-members.routes';
 
 export function createApp() {
   const app = express();
@@ -48,6 +49,7 @@ export function createApp() {
   app.use('/api/stats', statsRoutes);
   app.use('/api/test-plans', testPlansRoutes);
   app.use('/api/projects/:projectId/environments', environmentsRoutes);
+  app.use('/api/projects/:projectId/members', projectMembersRoutes);
 
   app.use('/api/artifacts/:execId/:filename', (req, res) => {
     const filePath = path.join(__dirname, '..', 'data', 'artifacts', `exec_${req.params.execId}`, req.params.filename);
