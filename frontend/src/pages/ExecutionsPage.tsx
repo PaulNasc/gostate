@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { executionsApi, projectsApi, API_BASE } from '../lib/api';
+import { executionsApi, projectsApi, agentsApi, API_BASE } from '../lib/api';
 import { formatDate, formatDuration, statusBadgeClass, statusLabel } from '../lib/utils';
 import {
   PlayCircle, RefreshCw, X, Loader2, ExternalLink,
   CheckCircle2, XCircle, Clock, AlertCircle, ChevronsLeft, ChevronLeft, ChevronRight,
+  RotateCcw,
 } from 'lucide-react';
 import { io as socketIo } from 'socket.io-client';
+import { useToast } from '../components/Toast';
 
 const STATUS_FILTERS = [
   { key: 'all', label: 'Todas' },
@@ -34,6 +36,7 @@ function StatusDot({ status }: { status: string }) {
 export default function ExecutionsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const toast = useToast();
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterProject, setFilterProject] = useState<string>('');
   const [page, setPage] = useState(1);
@@ -85,6 +88,28 @@ export default function ExecutionsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['executions'] }),
   });
 
+  const rerunFailed = useMutation({
+    mutationFn: async () => {
+      const { data: agentsData } = await agentsApi.list();
+      const agent = (agentsData?.agents || []).find((a: any) => a.status === 'online');
+      if (!agent) throw new Error('Nenhum agente online disponível');
+      const failedInView = filtered.filter(e => (e.status === 'failed' || e.status === 'error') && e.test_case_id);
+      const uniqueTcIds = [...new Set(failedInView.map((e: any) => e.test_case_id))];
+      if (uniqueTcIds.length === 0) throw new Error('Nenhum caso de teste com falha nesta visão');
+      await Promise.all(uniqueTcIds.map((tcId: any) =>
+        executionsApi.create({ test_case_id: tcId, browsers: ['chromium'], video_enabled: false })
+      ));
+      return uniqueTcIds.length;
+    },
+    onSuccess: (count) => {
+      qc.invalidateQueries({ queryKey: ['executions'] });
+      toast.success(`${count} caso${count !== 1 ? 's' : ''} re-executado${count !== 1 ? 's' : ''}`);
+    },
+    onError: (e: any) => toast.error(e?.message || 'Erro ao re-executar'),
+  });
+
+  const failedCount = filtered.filter(e => e.status === 'failed' || e.status === 'error').length;
+
   useEffect(() => {
     const token = localStorage.getItem('gostate:token');
     if (!token) return;
@@ -113,9 +138,25 @@ export default function ExecutionsPage() {
             {filtered.length} {filtered.length === 1 ? 'execução' : 'execuções'}{filtered.length !== total ? ` de ${total}` : ' no total'}
           </p>
         </div>
-        <button className="btn-ghost flex items-center gap-2 text-sm" onClick={() => refetch()}>
-          <RefreshCw className="w-3.5 h-3.5" /> Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          {failedCount > 0 && (
+            <button
+              className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50"
+              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+              disabled={rerunFailed.isPending}
+              onClick={() => rerunFailed.mutate()}
+              title={`Re-executar ${failedCount} caso${failedCount !== 1 ? 's' : ''} com falha`}
+            >
+              {rerunFailed.isPending
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <RotateCcw className="w-3.5 h-3.5" />}
+              Re-executar falhos ({failedCount})
+            </button>
+          )}
+          <button className="btn-ghost flex items-center gap-2 text-sm" onClick={() => refetch()}>
+            <RefreshCw className="w-3.5 h-3.5" /> Atualizar
+          </button>
+        </div>
       </div>
 
       {/* Summary cards */}

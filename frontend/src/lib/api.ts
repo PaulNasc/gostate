@@ -80,7 +80,8 @@ export const agentsApi = {
 };
 
 export const executionsApi = {
-  list: (params?: any) => api.get('/api/executions', { params }),
+  list: (params?: { status?: string; project_id?: string; test_case_id?: string; test_plan_id?: string; limit?: number }) =>
+    api.get('/api/executions', { params }),
   create: (data: any) => api.post('/api/executions', data),
   get: (id: string) => api.get(`/api/executions/${id}`),
   getLogs: (id: string) => api.get(`/api/executions/${id}/logs`),

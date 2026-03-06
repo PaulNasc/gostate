@@ -72,6 +72,8 @@ router.get('/', authenticate, (req: AuthRequest, res: Response) => {
   const conditions: string[] = [];
   if (status) { conditions.push('e.status = ?'); params.push(status); }
   if (project_id) { conditions.push('COALESCE(s.project_id, su.project_id) = ?'); params.push(project_id); }
+  if (req.query.test_case_id) { conditions.push('e.test_case_id = ?'); params.push(req.query.test_case_id); }
+  if (req.query.test_plan_id) { conditions.push('e.test_plan_id = ?'); params.push(req.query.test_plan_id); }
   if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
   query += ` ORDER BY
     CASE e.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END ASC,

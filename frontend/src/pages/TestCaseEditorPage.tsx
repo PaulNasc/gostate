@@ -1,13 +1,14 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useToast } from '../components/Toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { testcasesApi, executionsApi } from '../lib/api';
-import { formatDate } from '../lib/utils';
+import { formatDate, formatDuration, statusBadgeClass } from '../lib/utils';
 import {
   ArrowLeft, Plus, Trash2, Play, Save, GripVertical, Loader2,
   Globe, MousePointer, Type, Eye, Camera, Clock, Code, CheckSquare,
-  AlertCircle, ChevronDown, ChevronUp, X, History, RotateCcw
+  AlertCircle, ChevronDown, ChevronUp, X, History, RotateCcw, Tag,
+  CheckCircle2, XCircle, ExternalLink, Zap
 } from 'lucide-react';
 
 /* ── Step catalog ───────────────────────────────────────────────── */
@@ -154,12 +155,44 @@ export default function TestCaseEditorPage() {
   const [showRunModal, setShowRunModal] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showExecHistory, setShowExecHistory] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const [tagsInitialized, setTagsInitialized] = useState(false);
+  const tagInputRef = useRef<HTMLInputElement>(null);
 
   if (tc && !initialized) {
     const parsed = typeof tc.steps === 'string' ? JSON.parse(tc.steps || '[]') : (tc.steps || []);
     setSteps(parsed.map((s: any, i: number) => ({ ...s, _id: i })));
     setInitialized(true);
   }
+
+  if (tc && !tagsInitialized) {
+    const parsedTags = typeof tc.tags === 'string' ? JSON.parse(tc.tags || '[]') : (tc.tags || []);
+    setTags(parsedTags);
+    setTagsInitialized(true);
+  }
+
+  const { data: execHistoryData } = useQuery({
+    queryKey: ['tc-exec-history', tcId],
+    queryFn: () => executionsApi.list({ test_case_id: tcId, limit: 20 }),
+    enabled: showExecHistory,
+  });
+  const execHistory: any[] = execHistoryData?.data?.executions || [];
+
+  const flakiness = (() => {
+    if (execHistory.length < 5) return null;
+    const last10 = execHistory.slice(0, 10);
+    let switches = 0;
+    for (let i = 1; i < last10.length; i++) {
+      const prev = last10[i - 1].status;
+      const curr = last10[i].status;
+      const prevFinal = prev === 'passed';
+      const currFinal = curr === 'passed';
+      if (prevFinal !== currFinal) switches++;
+    }
+    return switches / (last10.length - 1);
+  })();
 
   const { data: versionsData, refetch: refetchVersions } = useQuery({
     queryKey: ['tc-versions', suiteId, tcId],
@@ -168,12 +201,27 @@ export default function TestCaseEditorPage() {
   });
   const versions: any[] = versionsData?.data?.versions || [];
 
+  const addTag = (raw: string) => {
+    const tag = raw.trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
+    if (tag && !tags.includes(tag)) {
+      const next = [...tags, tag];
+      setTags(next);
+      setDirty(true);
+    }
+    setTagInput('');
+  };
+
+  const removeTag = (tag: string) => {
+    setTags(prev => prev.filter(t => t !== tag));
+    setDirty(true);
+  };
+
   const save = useMutation({
     mutationFn: () => testcasesApi.update(suiteId!, tcId!, {
       title: tc?.title || 'Sem título',
       description: tc?.description || '',
       steps: steps.map((s, i) => ({ ...s, order: i + 1, _id: undefined })),
-      tags: tc?.tags || [],
+      tags,
       priority: tc?.priority || 'medium',
       status: tc?.status || 'active',
       type: tc?.type || 'web',
@@ -248,17 +296,43 @@ export default function TestCaseEditorPage() {
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="text-base font-bold truncate" style={{ color: 'var(--text)' }}>{tc?.title || '...'}</h1>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{steps.length} step{steps.length !== 1 ? 's' : ''} • Editor No-Code</p>
+          <div className="flex items-center gap-2 flex-wrap mt-0.5">
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{steps.length} step{steps.length !== 1 ? 's' : ''} • Editor No-Code</p>
+            {tags.map(tag => (
+              <span key={tag} className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <Tag className="w-2.5 h-2.5" />{tag}
+              </span>
+            ))}
+            {flakiness !== null && flakiness > 0.3 && (
+              <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                <Zap className="w-2.5 h-2.5" /> Flaky
+              </span>
+            )}
+          </div>
         </div>
         {dirty && <span className="text-xs text-amber-400 font-medium">● não salvo</span>}
         <button
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors relative"
+          style={showExecHistory
+            ? { borderColor: 'var(--primary)', color: 'var(--primary)' }
+            : { borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+          onClick={() => { setShowExecHistory(h => !h); setShowHistory(false); setShowCatalog(false); }}
+          title="Histórico de execuções"
+        >
+          {flakiness !== null && flakiness > 0.3 && (
+            <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400" />
+          )}
+          <Zap className="w-3.5 h-3.5" />
+          Runs
+        </button>
+        <button
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors"
           style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
-          onClick={() => { setShowHistory(h => !h); setShowCatalog(false); if (!showHistory) refetchVersions(); }}
+          onClick={() => { setShowHistory(h => !h); setShowExecHistory(false); setShowCatalog(false); if (!showHistory) refetchVersions(); }}
           title="Histórico de versões"
         >
           <History className="w-3.5 h-3.5" />
-          {!showHistory ? 'Histórico' : 'Fechar'}
+          {!showHistory ? 'Versões' : 'Fechar'}
         </button>
         <button
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors"
@@ -452,7 +526,84 @@ export default function TestCaseEditorPage() {
           )}
         </div>
 
-        {/* History sidebar */}
+        {/* Execution history sidebar */}
+        {showExecHistory && (
+          <div className="w-80 border-l flex flex-col flex-shrink-0" style={{ borderColor: 'var(--border)', background: 'var(--surface-1)' }}>
+            <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4" style={{ color: 'var(--primary)' }} />
+                <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Histórico de Execuções</span>
+                {flakiness !== null && flakiness > 0.3 && (
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">Flaky</span>
+                )}
+              </div>
+              <button onClick={() => setShowExecHistory(false)} className="btn-ghost p-1"><X className="w-4 h-4" /></button>
+            </div>
+
+            {/* Tags editor */}
+            <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+              <p className="text-xs font-semibold mb-2 flex items-center gap-1" style={{ color: 'var(--text)' }}>
+                <Tag className="w-3 h-3" /> Tags
+              </p>
+              <div className="flex flex-wrap gap-1 mb-2">
+                {tags.map(tag => (
+                  <span key={tag} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                    {tag}
+                    <button onClick={() => removeTag(tag)} className="hover:text-red-400 transition-colors">
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <input
+                ref={tagInputRef}
+                className="input w-full text-xs py-1"
+                placeholder="Adicionar tag (Enter ou vírgula)"
+                value={tagInput}
+                onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(tagInput); }
+                  if (e.key === 'Backspace' && !tagInput && tags.length) removeTag(tags[tags.length - 1]);
+                }}
+                onBlur={() => { if (tagInput.trim()) addTag(tagInput); }}
+              />
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Ex: smoke, regression, login</p>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3 space-y-1">
+              {execHistory.length === 0 ? (
+                <div className="py-8 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                  <Zap className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  Nenhuma execução ainda
+                </div>
+              ) : (
+                execHistory.map((exec: any) => (
+                  <div
+                    key={exec.id}
+                    className="flex items-center gap-2 py-2 px-2 rounded-lg cursor-pointer transition-colors"
+                    onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                    onClick={() => window.open(`/executions/${exec.id}`, '_blank')}
+                  >
+                    {exec.status === 'passed' && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 flex-shrink-0" />}
+                    {exec.status === 'failed' && <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />}
+                    {exec.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-orange-400 flex-shrink-0" />}
+                    {(exec.status === 'running' || exec.status === 'queued') && <Loader2 className="w-3.5 h-3.5 text-blue-400 animate-spin flex-shrink-0" />}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs truncate" style={{ color: 'var(--text)' }}>{formatDate(exec.created_at)}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        {exec.agent_name || '—'}{exec.duration_ms ? ` · ${formatDuration(exec.duration_ms)}` : ''}
+                      </p>
+                    </div>
+                    <ExternalLink className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Version History sidebar */}
         {showHistory && (
           <div className="w-80 border-l flex flex-col flex-shrink-0" style={{ borderColor: 'var(--border)', background: 'var(--surface-1)' }}>
             <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
