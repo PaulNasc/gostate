@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  Cell, PieChart, Pie, Legend
+  Cell, PieChart, Pie, Legend, LineChart, Line, ReferenceLine
 } from 'recharts';
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
@@ -80,6 +80,13 @@ export default function ReportsPage() {
   const dayChart = Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)).map(([day, d]) => ({
     day: day.slice(5), Passou: d.passed, Falhou: d.failed, Erro: d.error,
   }));
+
+  const passRateChart = Object.entries(byDay)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([day, d]) => {
+      const t = d.passed + d.failed + d.error;
+      return { day: day.slice(5), rate: t > 0 ? Math.round((d.passed / t) * 100) : null };
+    });
 
   const pieData = [
     { name: 'Passou', value: passed, color: '#10b981' },
@@ -350,6 +357,42 @@ export default function ReportsPage() {
               <span className="text-xs text-amber-400 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />Erro</span>
             </div>
           </div>
+
+          {/* Pass rate over time */}
+          {passRateChart.length > 1 && (
+            <div className="card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Pass Rate ao longo do tempo</h2>
+                <span className={`text-xs font-bold ${passRate >= 80 ? 'text-green-400' : passRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>
+                  Média: {passRate}%
+                </span>
+              </div>
+              <ResponsiveContainer width="100%" height={160}>
+                <LineChart data={passRateChart} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                  <XAxis dataKey="day" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis domain={[0, 100]} tickFormatter={(v: number) => `${v}%`} tick={{ fill: 'var(--text-muted)', fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <Tooltip
+                    formatter={(v: any) => [`${v}%`, 'Pass Rate']}
+                    contentStyle={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}
+                    labelStyle={{ color: 'var(--text)' }}
+                  />
+                  <ReferenceLine y={80} stroke="#10b981" strokeDasharray="3 3" strokeOpacity={0.4} />
+                  <Line
+                    type="monotone"
+                    dataKey="rate"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    dot={{ fill: '#3b82f6', r: 3 }}
+                    activeDot={{ r: 5 }}
+                    connectNulls
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                Linha verde tracejada = meta 80%
+              </p>
+            </div>
+          )}
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
