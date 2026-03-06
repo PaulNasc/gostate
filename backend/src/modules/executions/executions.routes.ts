@@ -43,6 +43,7 @@ const CreateExecSchema = z.object({
   test_case_id: z.string().uuid().optional(),
   script_id: z.string().uuid().optional(),
   test_plan_id: z.string().uuid().optional(),
+  environment_id: z.string().uuid().optional(),
   scriptContent: z.string().optional(),
   video_enabled: z.boolean().default(false),
   browsers: z.array(z.string()).default(['chromium']),
@@ -92,13 +93,13 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
   const availableAgent = db.prepare('SELECT * FROM agents WHERE status = ? ORDER BY last_heartbeat DESC LIMIT 1').get('online') as any;
 
   const id = uuidv4();
-  const { test_case_id, script_id, test_plan_id, video_enabled, browsers, scriptContent: bodyScriptContent } = parse.data;
+  const { test_case_id, script_id, test_plan_id, environment_id, video_enabled, browsers, scriptContent: bodyScriptContent } = parse.data;
   const browsersJson = JSON.stringify(browsers);
 
   db.prepare(`
-    INSERT INTO executions (id, test_plan_id, test_case_id, script_id, agent_id, triggered_by, status, video_enabled, browsers)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, test_plan_id || null, test_case_id || null, script_id || null, availableAgent?.id || null, req.user!.id, 'queued', video_enabled ? 1 : 0, browsersJson);
+    INSERT INTO executions (id, test_plan_id, test_case_id, script_id, environment_id, agent_id, triggered_by, status, video_enabled, browsers)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, test_plan_id || null, test_case_id || null, script_id || null, environment_id || null, availableAgent?.id || null, req.user!.id, 'queued', video_enabled ? 1 : 0, browsersJson);
 
   const execution = db.prepare('SELECT * FROM executions WHERE id = ?').get(id) as any;
 
@@ -121,6 +122,18 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
     db.prepare('UPDATE agents SET status = ? WHERE id = ?').run('busy', availableAgent.id);
     db.prepare('UPDATE executions SET status = ?, agent_id = ? WHERE id = ?').run('queued', availableAgent.id, id);
 
+    // Resolve environment variables if an environment_id was provided
+    let envVars: Record<string, string> = {};
+    if (environment_id) {
+      const env = db.prepare('SELECT variables FROM environments WHERE id = ?').get(environment_id) as any;
+      if (env) {
+        try {
+          const vars: Array<{ key: string; value: string }> = JSON.parse(env.variables || '[]');
+          for (const v of vars) { if (v.key) envVars[v.key] = v.value; }
+        } catch { /* ignore parse errors */ }
+      }
+    }
+
     const runConfig = {
       execId: id,
       test_case_id: test_case_id || null,
@@ -133,6 +146,7 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
       videoEnabled: video_enabled,
       timeout: parse.data.timeout,
       backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
+      env: envVars,
     };
 
     io.to(`agent:${availableAgent.id}`).emit('exec:dispatch', runConfig);
