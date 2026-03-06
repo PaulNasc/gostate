@@ -290,6 +290,23 @@ function runMigrations(db: Database.Database): void {
       `
     },
     {
+      version: 8,
+      sql: `
+        CREATE TABLE IF NOT EXISTS environments (
+          id TEXT PRIMARY KEY,
+          project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          variables TEXT NOT NULL DEFAULT '[]',
+          created_by TEXT NOT NULL REFERENCES users(id),
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_environments_project_id ON environments(project_id);
+        ALTER TABLE executions ADD COLUMN environment_id TEXT REFERENCES environments(id) ON DELETE SET NULL;
+        ALTER TABLE schedules ADD COLUMN test_plan_id TEXT REFERENCES test_plans(id) ON DELETE CASCADE;
+      `
+    },
+    {
       version: 3,
       sql: `
         -- Drop and recreate schedules with updated schema

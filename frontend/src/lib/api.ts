@@ -107,6 +107,13 @@ export const integrationsApi = {
   test: (id: string) => api.post(`/api/integrations/${id}/test`),
 };
 
+export const environmentsApi = {
+  list: (projectId: string) => api.get(`/api/projects/${projectId}/environments`),
+  create: (projectId: string, data: any) => api.post(`/api/projects/${projectId}/environments`, data),
+  update: (projectId: string, envId: string, data: any) => api.put(`/api/projects/${projectId}/environments/${envId}`, data),
+  remove: (projectId: string, envId: string) => api.delete(`/api/projects/${projectId}/environments/${envId}`),
+};
+
 export const testPlansApi = {
   list: (projectId: string) => api.get('/api/test-plans', { params: { project_id: projectId } }),
   get: (id: string) => api.get(`/api/test-plans/${id}`),
