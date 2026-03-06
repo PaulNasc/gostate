@@ -73,7 +73,10 @@ router.get('/', authenticate, (req: AuthRequest, res: Response) => {
   if (status) { conditions.push('e.status = ?'); params.push(status); }
   if (project_id) { conditions.push('COALESCE(s.project_id, su.project_id) = ?'); params.push(project_id); }
   if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
-  query += ' ORDER BY e.created_at DESC LIMIT ?';
+  query += ` ORDER BY
+    CASE e.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END ASC,
+    e.created_at DESC
+    LIMIT ?`;
   params.push(parseInt(limit));
   const executions = db.prepare(query).all(...params);
   res.json({ executions });

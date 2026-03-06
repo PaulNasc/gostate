@@ -1,24 +1,128 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import {
-  LayoutDashboard, FolderOpen, PlayCircle, Users, Server,
-  LogOut, ChevronRight, Menu, CalendarClock, Webhook, Code2, BarChart3,
-  Sun, Moon
-} from 'lucide-react';
+import { LogOut, ChevronRight, Menu, Sun, Moon } from 'lucide-react';
 import GoStateIcon from './GoStateIcon';
 import { useState, useEffect } from 'react';
 import { cn } from '../lib/utils';
 
+// Custom SVG nav icons — original, minimal, colored
+function IconDashboard({ active }: { active: boolean }) {
+  const c = active ? '#3b62f6' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="1" y="1" width="6" height="6" rx="1.5" fill={c} opacity={active ? 1 : 0.5} />
+      <rect x="9" y="1" width="6" height="6" rx="1.5" fill={c} opacity={active ? 0.6 : 0.3} />
+      <rect x="1" y="9" width="6" height="6" rx="1.5" fill={c} opacity={active ? 0.6 : 0.3} />
+      <rect x="9" y="9" width="6" height="6" rx="1.5" fill={c} opacity={active ? 1 : 0.5} />
+    </svg>
+  );
+}
+
+function IconProjects({ active }: { active: boolean }) {
+  const c = active ? '#f59e0b' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M1 4.5C1 3.67 1.67 3 2.5 3h3.17c.35 0 .69.12.96.34L7.5 4H13.5C14.33 4 15 4.67 15 5.5v7c0 .83-.67 1.5-1.5 1.5h-11C1.67 14 1 13.33 1 12.5v-8z" fill={c} opacity={active ? 0.2 : 0.15} />
+      <path d="M1 6h14" stroke={c} strokeWidth="1.2" strokeOpacity={active ? 0.6 : 0.4} />
+      <path d="M1 4.5C1 3.67 1.67 3 2.5 3h3.17c.35 0 .69.12.96.34L7.5 4H13.5C14.33 4 15 4.67 15 5.5V6H1V4.5z" fill={c} opacity={active ? 0.8 : 0.5} />
+    </svg>
+  );
+}
+
+function IconExecutions({ active }: { active: boolean }) {
+  const c = active ? '#22c55e' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="6.5" stroke={c} strokeWidth="1.3" opacity={active ? 0.4 : 0.25} />
+      <path d="M6 5.5l5 2.5-5 2.5V5.5z" fill={c} opacity={active ? 1 : 0.6} />
+    </svg>
+  );
+}
+
+function IconReports({ active }: { active: boolean }) {
+  const c = active ? '#a78bfa' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="2" y="9" width="2.5" height="5" rx="0.8" fill={c} opacity={active ? 1 : 0.5} />
+      <rect x="6" y="6" width="2.5" height="8" rx="0.8" fill={c} opacity={active ? 0.8 : 0.4} />
+      <rect x="10" y="3" width="2.5" height="11" rx="0.8" fill={c} opacity={active ? 0.6 : 0.3} />
+      <path d="M3 9 L7 6 L11 3" stroke={c} strokeWidth="1.2" strokeLinecap="round" opacity={active ? 0.5 : 0.3} />
+    </svg>
+  );
+}
+
+function IconScheduler({ active }: { active: boolean }) {
+  const c = active ? '#fb923c' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="2" y="3" width="12" height="11" rx="1.5" stroke={c} strokeWidth="1.3" opacity={active ? 0.5 : 0.3} />
+      <path d="M2 6.5h12" stroke={c} strokeWidth="1.2" opacity={active ? 0.6 : 0.35} />
+      <path d="M5.5 1.5v2M10.5 1.5v2" stroke={c} strokeWidth="1.3" strokeLinecap="round" opacity={active ? 0.9 : 0.5} />
+      <circle cx="8" cy="10.5" r="1.5" fill={c} opacity={active ? 1 : 0.5} />
+    </svg>
+  );
+}
+
+function IconScripts({ active }: { active: boolean }) {
+  const c = active ? '#38bdf8' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M4.5 5.5L2 8l2.5 2.5" stroke={c} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" opacity={active ? 1 : 0.5} />
+      <path d="M11.5 5.5L14 8l-2.5 2.5" stroke={c} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" opacity={active ? 1 : 0.5} />
+      <path d="M9.5 3.5l-3 9" stroke={c} strokeWidth="1.4" strokeLinecap="round" opacity={active ? 0.7 : 0.35} />
+    </svg>
+  );
+}
+
+function IconIntegrations({ active }: { active: boolean }) {
+  const c = active ? '#f472b6' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <circle cx="3.5" cy="8" r="2" fill={c} opacity={active ? 0.9 : 0.5} />
+      <circle cx="12.5" cy="4" r="2" fill={c} opacity={active ? 0.7 : 0.35} />
+      <circle cx="12.5" cy="12" r="2" fill={c} opacity={active ? 0.7 : 0.35} />
+      <path d="M5.5 8h3l1.5-4" stroke={c} strokeWidth="1.2" strokeLinecap="round" opacity={active ? 0.6 : 0.3} />
+      <path d="M8.5 8l1.5 4" stroke={c} strokeWidth="1.2" strokeLinecap="round" opacity={active ? 0.6 : 0.3} />
+    </svg>
+  );
+}
+
+function IconAgents({ active }: { active: boolean }) {
+  const c = active ? '#34d399' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="2.5" y="3.5" width="11" height="7" rx="1.5" stroke={c} strokeWidth="1.3" opacity={active ? 0.6 : 0.35} />
+      <rect x="4.5" y="5.5" width="3" height="3" rx="0.8" fill={c} opacity={active ? 0.8 : 0.45} />
+      <rect x="9" y="6" width="2.5" height="1" rx="0.5" fill={c} opacity={active ? 0.5 : 0.3} />
+      <rect x="9" y="8" width="1.5" height="1" rx="0.5" fill={c} opacity={active ? 0.4 : 0.25} />
+      <path d="M5.5 10.5v2M8 10.5v2M10.5 10.5v2" stroke={c} strokeWidth="1.2" strokeLinecap="round" opacity={active ? 0.5 : 0.3} />
+      <path d="M4 12.5h8" stroke={c} strokeWidth="1.2" strokeLinecap="round" opacity={active ? 0.4 : 0.25} />
+    </svg>
+  );
+}
+
+function IconUsers({ active }: { active: boolean }) {
+  const c = active ? '#c084fc' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <circle cx="6" cy="5.5" r="2.5" fill={c} opacity={active ? 0.8 : 0.45} />
+      <path d="M1.5 13c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4" stroke={c} strokeWidth="1.3" strokeLinecap="round" opacity={active ? 0.7 : 0.4} />
+      <circle cx="11.5" cy="5.5" r="1.8" fill={c} opacity={active ? 0.5 : 0.3} />
+      <path d="M13 13c0-1.8-1-3-2.5-3.5" stroke={c} strokeWidth="1.3" strokeLinecap="round" opacity={active ? 0.5 : 0.3} />
+    </svg>
+  );
+}
+
 const navItems = [
-  { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/projects', icon: FolderOpen, label: 'Projetos' },
-  { to: '/executions', icon: PlayCircle, label: 'Execuções' },
-  { to: '/reports', icon: BarChart3, label: 'Relatórios' },
-  { to: '/scheduler', icon: CalendarClock, label: 'Agendamentos' },
-  { to: '/scripts', icon: Code2, label: 'Scripts' },
-  { to: '/integrations', icon: Webhook, label: 'Integrações' },
-  { to: '/agents', icon: Server, label: 'Agentes' },
-  { to: '/users', icon: Users, label: 'Usuários', adminOnly: true },
+  { to: '/dashboard',    Icon: IconDashboard,    label: 'Dashboard' },
+  { to: '/projects',     Icon: IconProjects,     label: 'Projetos' },
+  { to: '/executions',   Icon: IconExecutions,   label: 'Execuções' },
+  { to: '/reports',      Icon: IconReports,      label: 'Relatórios' },
+  { to: '/scheduler',    Icon: IconScheduler,    label: 'Agendamentos' },
+  { to: '/scripts',      Icon: IconScripts,      label: 'Scripts' },
+  { to: '/integrations', Icon: IconIntegrations, label: 'Integrações' },
+  { to: '/agents',       Icon: IconAgents,       label: 'Agentes' },
+  { to: '/users',        Icon: IconUsers,        label: 'Usuários', adminOnly: true },
 ];
 
 export default function Layout() {
@@ -86,8 +190,12 @@ export default function Layout() {
                 }
                 title={collapsed ? item.label : undefined}
               >
-                <item.icon className="w-4 h-4 flex-shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
+                {({ isActive }) => (
+                  <>
+                    <span className="flex-shrink-0"><item.Icon active={isActive} /></span>
+                    {!collapsed && <span>{item.label}</span>}
+                  </>
+                )}
               </NavLink>
             );
           })}

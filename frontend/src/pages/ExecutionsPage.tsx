@@ -31,8 +31,6 @@ function StatusDot({ status }: { status: string }) {
   return <span className={`${statusBadgeClass(status)} text-xs`}>{statusLabel(status)}</span>;
 }
 
-const STATUS_SORT: Record<string, number> = { running: 0, queued: 1 };
-
 export default function ExecutionsPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -51,15 +49,8 @@ export default function ExecutionsPage() {
   const projects: any[] = projectsData?.data?.projects || [];
   const allExecutions: any[] = data?.data?.executions || [];
 
-  // Sort: running/queued first, then all others by date descending (newest first)
-  const sorted = [...allExecutions].sort((a, b) => {
-    const sa = STATUS_SORT[a.status] ?? 2;
-    const sb = STATUS_SORT[b.status] ?? 2;
-    if (sa !== sb) return sa - sb;
-    const ta = a.created_at ? new Date(a.created_at.replace(' ', 'T')).getTime() : 0;
-    const tb = b.created_at ? new Date(b.created_at.replace(' ', 'T')).getTime() : 0;
-    return tb - ta;
-  });
+  // Backend already returns: running/queued first, then created_at DESC — preserve that order
+  const sorted = allExecutions;
 
   // Apply filters
   const filtered = sorted
