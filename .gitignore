@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build output
+dist/
+**/dist/
+build/
+**/build/
+
+# Environment files — NEVER commit secrets
+.env
+**/.env
+.env.local
+.env.*.local
+
+# Database & runtime data
+backend/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Artifacts (screenshots, videos)
+backend/data/artifacts/
+agent/test-results/
+agent/html-report/
+**/test-results/
+**/html-report/
+**/.local-browsers/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# Vite cache
+.vite/
+**/.vite/
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Playwright
+playwright-report/

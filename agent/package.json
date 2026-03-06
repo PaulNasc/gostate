@@ -1,0 +1,24 @@
+{
+  "name": "gostate-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "goState remote execution agent — runs Playwright tests and streams results",
+  "main": "dist/agent.js",
+  "scripts": {
+    "dev": "tsx src/agent.ts",
+    "build": "tsc",
+    "start": "node dist/agent.js"
+  },
+  "dependencies": {
+    "@playwright/test": "^1.42.1",
+    "axios": "^1.6.8",
+    "dotenv": "^17.3.1",
+    "form-data": "^4.0.0",
+    "socket.io-client": "^4.7.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.2"
+  }
+}

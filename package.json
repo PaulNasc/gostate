@@ -1,0 +1,21 @@
+{
+  "name": "gostate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "goState — Test Automation Command Center",
+  "scripts": {
+    "start": "npx concurrently --names BACKEND,FRONTEND --prefix-colors cyan,green \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "start:agent": "npx concurrently --names BACKEND,FRONTEND,AGENT --prefix-colors cyan,green,yellow \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\" \"npm run dev --prefix agent\"",
+    "dev": "npx concurrently --names BACKEND,FRONTEND --prefix-colors cyan,green \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:all": "npx concurrently --names BACKEND,FRONTEND,ADMIN --prefix-colors cyan,green,magenta \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\" \"npm run dev --prefix admin\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:admin": "npm run dev --prefix admin",
+    "install:all": "npm install && npm install --prefix backend && npm install --prefix frontend && npm install --prefix agent && npm install --prefix admin",
+    "agent": "npm run dev --prefix agent"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "wait-on": "^7.2.0"
+  }
+}

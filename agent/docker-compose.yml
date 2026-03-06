@@ -1,0 +1,10 @@
+services:
+  agent-teste--1:
+    build: .
+    restart: unless-stopped
+    environment:
+      AGENT_TOKEN: cd8a28f3-e635-4b14-938a-97eaf7b543a4-e2fd02f1-c5c6-4482-8170-d9b9e1238c3b
+      BACKEND_URL: http://host.docker.internal:4000
+      NODE_ENV: production
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
