@@ -40,10 +40,11 @@ function runDueSchedules() {
     const id = uuidv4();
     const now = new Date().toISOString();
 
+    const browsers = (() => { try { return sched.browsers || '["chromium"]'; } catch { return '["chromium"]'; } })();
     db.prepare(`
-      INSERT INTO executions (id, test_case_id, agent_id, triggered_by, status, video_enabled, created_at)
-      VALUES (?, ?, ?, ?, 'queued', 0, ?)
-    `).run(id, sched.test_case_id || null, agent.id, adminUser.id, now);
+      INSERT INTO executions (id, test_case_id, agent_id, triggered_by, status, video_enabled, browsers, created_at)
+      VALUES (?, ?, ?, ?, 'queued', 0, ?, ?)
+    `).run(id, sched.test_case_id || null, agent.id, adminUser.id, browsers, now);
 
     db.prepare('UPDATE schedules SET last_run = ? WHERE id = ?').run(now, sched.id);
     db.prepare('UPDATE agents SET status = ? WHERE id = ?').run('busy', agent.id);
