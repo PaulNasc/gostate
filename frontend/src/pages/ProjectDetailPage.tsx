@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { projectsApi, suitesApi, testcasesApi, executionsApi, agentsApi } from '../lib/api';
+import { projectsApi, suitesApi, testcasesApi, executionsApi, agentsApi, environmentsApi } from '../lib/api';
 import { formatDate, statusBadgeClass, statusLabel } from '../lib/utils';
-import { ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, TestTube2, Loader2, FolderOpen, Play, Pencil, PlayCircle, ClipboardList, Layers, Users } from 'lucide-react';
+import { ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, TestTube2, Loader2, FolderOpen, Play, Pencil, PlayCircle, ClipboardList, Layers, Users, Tag, Search, X } from 'lucide-react';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -48,6 +48,8 @@ export default function ProjectDetailPage() {
 
   const [runModal, setRunModal] = useState<{ tcId: string; title: string } | null>(null);
   const [runSuiteModal, setRunSuiteModal] = useState<{ suiteId: string; suiteName: string } | null>(null);
+  const [tagFilter, setTagFilter] = useState('');
+  const [searchFilter, setSearchFilter] = useState('');
 
   const toggleSuite = (id: string) => {
     setOpenSuites(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -89,6 +91,38 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
+      {/* Search + tag filter bar */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-48">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
+          <input
+            className="input w-full text-sm pl-8 py-1.5"
+            placeholder="Buscar casos de teste..."
+            value={searchFilter}
+            onChange={e => setSearchFilter(e.target.value)}
+          />
+          {searchFilter && (
+            <button className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setSearchFilter('')}>
+              <X className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
+            </button>
+          )}
+        </div>
+        <div className="relative">
+          <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
+          <input
+            className="input text-sm pl-8 py-1.5 w-40"
+            placeholder="Filtrar por tag"
+            value={tagFilter}
+            onChange={e => setTagFilter(e.target.value.toLowerCase())}
+          />
+          {tagFilter && (
+            <button className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setTagFilter('')}>
+              <X className="w-3.5 h-3.5" style={{ color: 'var(--text-muted)' }} />
+            </button>
+          )}
+        </div>
+      </div>
+
       {showSuiteForm && (
         <div className="card p-4 flex gap-2">
           <input className="input flex-1" placeholder="Nome da suite *" value={suiteName} onChange={e => setSuiteName(e.target.value)} autoFocus />
@@ -127,6 +161,8 @@ export default function ProjectDetailPage() {
               onRunSuite={() => setRunSuiteModal({ suiteId: suite.id, suiteName: suite.name })}
               onEditTc={(tcId: string) => navigate(`/suites/${suite.id}/testcases/${tcId}/editor`)}
               creating={createTc.isPending}
+              tagFilter={tagFilter}
+              searchFilter={searchFilter}
             />
           ))}
         </div>
@@ -135,6 +171,7 @@ export default function ProjectDetailPage() {
         <RunModal
           tcId={runModal.tcId}
           title={runModal.title}
+          projectId={projectId}
           onClose={() => setRunModal(null)}
         />
       )}
@@ -149,13 +186,20 @@ export default function ProjectDetailPage() {
   );
 }
 
-function RunModal({ tcId, title, onClose }: { tcId: string; title: string; onClose: () => void }) {
+function RunModal({ tcId, title, onClose, projectId }: { tcId: string; title: string; onClose: () => void; projectId?: string }) {
   const navigate = useNavigate();
   const { data } = useQuery({ queryKey: ['agents'], queryFn: () => agentsApi.list() });
+  const { data: envsData } = useQuery({
+    queryKey: ['environments', projectId],
+    queryFn: () => environmentsApi.list(projectId!),
+    enabled: !!projectId,
+  });
   const agents: any[] = (data?.data?.agents || []).filter((a: any) => a.status !== 'offline');
+  const envs: any[] = envsData?.data?.items || [];
   const [agentId, setAgentId] = useState('');
   const [browsers, setBrowsers] = useState('chromium');
   const [video, setVideo] = useState(false);
+  const [envId, setEnvId] = useState('');
 
   const run = useMutation({
     mutationFn: () => executionsApi.create({
@@ -163,6 +207,7 @@ function RunModal({ tcId, title, onClose }: { tcId: string; title: string; onClo
       browsers: [browsers],
       video_enabled: video,
       timeout: 60000,
+      environment_id: envId || undefined,
     }),
     onSuccess: (res) => { onClose(); navigate(`/executions/${res.data.execution.id}`); },
   });
@@ -197,6 +242,18 @@ function RunModal({ tcId, title, onClose }: { tcId: string; title: string; onClo
               <option value="webkit">WebKit (Safari)</option>
             </select>
           </div>
+
+          {envs.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Ambiente</label>
+              <select className="input" value={envId} onChange={e => setEnvId(e.target.value)}>
+                <option value="">Nenhum (sem variáveis de ambiente)</option>
+                {envs.map((e: any) => (
+                  <option key={e.id} value={e.id}>{e.name} ({e.variables?.length || 0} vars)</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <label className="flex items-center gap-2 cursor-pointer">
             <input type="checkbox" checked={video} onChange={e => setVideo(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
@@ -328,14 +385,21 @@ function RunSuiteModal({ suiteId, suiteName, onClose }: { suiteId: string; suite
   );
 }
 
-function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onShowTcForm, tcTitle, onTcTitle, onCreateTc, onDeleteTc, onRunTc, onRunSuite, onEditTc, creating }: any) {
+function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onShowTcForm, tcTitle, onTcTitle, onCreateTc, onDeleteTc, onRunTc, onRunSuite, onEditTc, creating, tagFilter, searchFilter }: any) {
   const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ['testcases', suite.id],
     queryFn: () => testcasesApi.list(suite.id),
     enabled: open,
   });
-  const tcs: any[] = data?.data?.test_cases || [];
+  const allTcs: any[] = data?.data?.test_cases || [];
+  const tcs = allTcs.filter(tc => {
+    const tags: string[] = typeof tc.tags === 'string' ? JSON.parse(tc.tags || '[]') : (tc.tags || []);
+    const matchesTag = !tagFilter || tags.some((t: string) => t.includes(tagFilter));
+    const matchesSearch = !searchFilter || tc.title.toLowerCase().includes(searchFilter.toLowerCase());
+    return matchesTag && matchesSearch;
+  });
+  const isFiltering = !!(tagFilter || searchFilter);
   const [editingName, setEditingName] = useState(false);
   const [nameVal, setNameVal] = useState(suite.name);
 
@@ -396,7 +460,9 @@ function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onSh
       {open && (
         <div className="border-t" style={{ borderColor: 'var(--border)' }}>
           {tcs.length === 0 ? (
-            <p className="text-sm px-10 py-4" style={{ color: 'var(--text-muted)' }}>Nenhum caso de teste nesta suite</p>
+            <p className="text-sm px-10 py-4" style={{ color: 'var(--text-muted)' }}>
+              {isFiltering ? 'Nenhum resultado para este filtro' : 'Nenhum caso de teste nesta suite'}
+            </p>
           ) : (
             tcs.map((tc) => (
               <div
@@ -407,7 +473,28 @@ function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onSh
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
                 <TestTube2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
-                <span className="flex-1 text-sm truncate" style={{ color: 'var(--text)' }}>{tc.title}</span>
+                <span className="text-sm truncate" style={{ color: 'var(--text)' }}>{tc.title}</span>
+                {(() => {
+                  const tags: string[] = typeof tc.tags === 'string' ? JSON.parse(tc.tags || '[]') : (tc.tags || []);
+                  return tags.length > 0 ? (
+                    <div className="flex items-center gap-1 flex-shrink-0 hidden lg:flex">
+                      {tags.slice(0, 3).map((tag: string) => (
+                        <span
+                          key={tag}
+                          className={`text-xs px-1.5 py-0.5 rounded cursor-pointer transition-colors ${
+                            tagFilter === tag
+                              ? 'bg-blue-500/30 text-blue-300 border border-blue-400/40'
+                              : 'bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20'
+                          }`}
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                      {tags.length > 3 && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>+{tags.length - 3}</span>}
+                    </div>
+                  ) : null;
+                })()}
+                <span className="flex-1" />
                 {tc.last_exec_status ? (
                   <button
                     className={`${statusBadgeClass(tc.last_exec_status)} text-xs flex-shrink-0 hover:opacity-80 transition-opacity`}
