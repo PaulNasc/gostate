@@ -1,9 +1,83 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { agentsApi, API_BASE } from '../lib/api';
+import { agentsApi, agentsApi as agentsApiToken, API_BASE } from '../lib/api';
 import { formatDate } from '../lib/utils';
-import { Server, Loader2, Wifi, ExternalLink } from 'lucide-react';
+import { Server, Loader2, Wifi, ExternalLink, ChevronDown, ChevronUp, Copy, Check, AlertTriangle, Terminal, Container } from 'lucide-react';
 import { io as socketIo } from 'socket.io-client';
+
+const BACKEND_URL = (import.meta as any).env?.VITE_API_BASE || window.location.origin.replace(/:\d+$/, ':4000');
+const IS_LOCALHOST = BACKEND_URL.includes('localhost') || BACKEND_URL.includes('127.0.0.1');
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      className="p-1 rounded transition-colors flex-shrink-0"
+      style={{ color: copied ? '#10b981' : 'var(--text-muted)' }}
+      onClick={() => {
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }}
+      title="Copiar"
+    >
+      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
+
+function AgentGuide({ token }: { token: string }) {
+  const envBlock = `BACKEND_URL=${BACKEND_URL}\nAGENT_TOKEN=${token}`;
+  const dockerCmd = `docker run -d --name gostate-agent \\
+  -e BACKEND_URL=${BACKEND_URL} \\
+  -e AGENT_TOKEN=${token} \\
+  gostate/agent:latest`;
+  const nodeCmd = `BACKEND_URL=${BACKEND_URL} AGENT_TOKEN=${token} node dist/index.js`;
+
+  return (
+    <div className="mt-3 pt-3 border-t space-y-3" style={{ borderColor: 'var(--border)' }}>
+      {IS_LOCALHOST && (
+        <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-300">
+            <strong>Atenção:</strong> BACKEND_URL aponta para <code className="font-mono bg-amber-500/10 px-1 rounded">localhost</code>.
+            Agentes externos não conseguirão acessar este endereço. Use o IP ou domínio da máquina do backend.
+          </p>
+        </div>
+      )}
+
+      <div>
+        <p className="text-xs font-semibold mb-1.5 flex items-center gap-1" style={{ color: 'var(--text)' }}>
+          <Terminal className="w-3 h-3" /> Variáveis de ambiente
+        </p>
+        <div className="relative rounded-lg overflow-hidden" style={{ background: 'var(--surface-3)' }}>
+          <div className="absolute top-2 right-2"><CopyButton text={envBlock} /></div>
+          <pre className="text-xs font-mono p-3 pr-10 overflow-x-auto" style={{ color: '#a5f3fc' }}>{envBlock}</pre>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold mb-1.5 flex items-center gap-1" style={{ color: 'var(--text)' }}>
+          <Container className="w-3 h-3" /> Docker
+        </p>
+        <div className="relative rounded-lg overflow-hidden" style={{ background: 'var(--surface-3)' }}>
+          <div className="absolute top-2 right-2"><CopyButton text={dockerCmd} /></div>
+          <pre className="text-xs font-mono p-3 pr-10 overflow-x-auto whitespace-pre-wrap" style={{ color: '#a5f3fc' }}>{dockerCmd}</pre>
+        </div>
+      </div>
+
+      <div>
+        <p className="text-xs font-semibold mb-1.5 flex items-center gap-1" style={{ color: 'var(--text)' }}>
+          <Terminal className="w-3 h-3" /> Bare metal (Node.js)
+        </p>
+        <div className="relative rounded-lg overflow-hidden" style={{ background: 'var(--surface-3)' }}>
+          <div className="absolute top-2 right-2"><CopyButton text={nodeCmd} /></div>
+          <pre className="text-xs font-mono p-3 pr-10 overflow-x-auto whitespace-pre-wrap" style={{ color: '#a5f3fc' }}>{nodeCmd}</pre>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function StatusBadge({ status }: { status: string }) {
   if (status === 'online') return (
@@ -34,8 +108,28 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function AgentsPage() {
   const qc = useQueryClient();
+  const [expandedGuide, setExpandedGuide] = useState<string | null>(null);
+  const [agentTokens, setAgentTokens] = useState<Record<string, string>>({});
 
   const { data, isLoading } = useQuery({ queryKey: ['agents'], queryFn: () => agentsApi.list(), refetchInterval: 15000 });
+
+  const fetchToken = async (agentId: string) => {
+    if (agentTokens[agentId]) return agentTokens[agentId];
+    try {
+      const res = await agentsApiToken.getToken(agentId);
+      const token = res.data?.token || res.data?.agent_token || '••••••••';
+      setAgentTokens(prev => ({ ...prev, [agentId]: token }));
+      return token;
+    } catch {
+      return '(token indisponível — consulte o painel Admin)';
+    }
+  };
+
+  const toggleGuide = async (agentId: string) => {
+    if (expandedGuide === agentId) { setExpandedGuide(null); return; }
+    await fetchToken(agentId);
+    setExpandedGuide(agentId);
+  };
 
   useEffect(() => {
     const token = localStorage.getItem('gostate:token');
@@ -117,14 +211,30 @@ export default function AgentsPage() {
                 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
                   Heartbeat: {agent.last_heartbeat ? formatDate(agent.last_heartbeat) : '—'}
                 </span>
-                {agent.status !== 'offline' ? (
-                  <span className="flex items-center gap-1 text-xs text-green-500">
-                    <Wifi className="w-3 h-3" /> ao vivo
-                  </span>
-                ) : (
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>offline</span>
-                )}
+                <div className="flex items-center gap-2">
+                  {agent.status !== 'offline' ? (
+                    <span className="flex items-center gap-1 text-xs text-green-500">
+                      <Wifi className="w-3 h-3" /> ao vivo
+                    </span>
+                  ) : (
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>offline</span>
+                  )}
+                  <button
+                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors border"
+                    style={expandedGuide === agent.id
+                      ? { borderColor: 'var(--primary)', color: 'var(--primary)', background: 'rgba(59,130,246,0.08)' }
+                      : { borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                    onClick={() => toggleGuide(agent.id)}
+                  >
+                    {expandedGuide === agent.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    Como conectar
+                  </button>
+                </div>
               </div>
+
+              {expandedGuide === agent.id && agentTokens[agent.id] && (
+                <AgentGuide token={agentTokens[agent.id]} />
+              )}
             </div>
           ))}
         </div>
