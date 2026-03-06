@@ -63,7 +63,7 @@ export default function DashboardPage() {
   const tooltipStyle = { background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text)' };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-6 overflow-hidden">
       <div>
         <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>Dashboard</h1>
         <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Visão geral da plataforma</p>
@@ -195,16 +195,6 @@ export default function DashboardPage() {
                 <span className="text-xs w-32 text-right flex-shrink-0 hidden lg:block" style={{ color: 'var(--text-muted)' }}>{formatDate(exec.created_at)}</span>
               </div>
             ))}
-          </div>
-        )}
-        {(s?.recent?.length ?? 0) > 0 && (
-          <div className="mt-3 pt-3 border-t text-center" style={{ borderColor: 'var(--border)' }}>
-            <button
-              className="text-xs transition-colors hover:text-blue-300 text-blue-400"
-              onClick={() => navigate('/executions')}
-            >
-              Ver todas as execuções →
-            </button>
           </div>
         )}
       </div>
