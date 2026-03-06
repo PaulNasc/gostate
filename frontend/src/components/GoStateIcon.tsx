@@ -11,133 +11,81 @@ export default function GoStateIcon({ size = 32, className = '', variant = 'fire
   const uid = useId().replace(/:/g, '');
   const isViolet = variant === 'violet';
 
-  const bgFrom = isViolet ? '#0f0c24' : '#130a00';
-  const bgTo   = isViolet ? '#1a1245' : '#1f0e00';
+  const g0 = isViolet ? '#a5b4fc' : '#00e5ff';
+  const g1 = isViolet ? '#7c3aed' : '#9d00ff';
+  const bg  = '#0a0e2a';
 
-  // Primary fill gradient (body + wing top)
-  const c0 = isViolet ? '#e0d4ff' : '#fde68a'; // light tip
-  const c1 = isViolet ? '#a78bfa' : '#fb923c'; // mid
-  const c2 = isViolet ? '#6d28d9' : '#dc2626'; // dark base
+  /*
+    Symbol concept: "run & verify"
+    ─────────────────────────────
+    Outer ring: open arc (like a progress/run indicator), gap at bottom-right
+    Inner shape: bold checkmark — confirms test passed
+
+    All coordinates on a 64×64 canvas, centre at (32, 32).
+
+    Arc: r=24, strokeWidth=5, runs from 135° to 45° clockwise (300° sweep, 60° gap)
+    Check: two line segments forming ✓, stroke-only, rounded caps
+      - left leg:  (19, 32) → (27, 41)
+      - right leg: (27, 41) → (45, 22)
+  */
+
+  // Arc path: large arc from 135° to 45° (300° sweep, clockwise)
+  // Polar → cartesian: x = cx + r·cos(θ), y = cy + r·sin(θ)
+  // 135° = top-left gap start,  45° = top-right gap end
+  // arc from 135° CW to 45° = 300° sweep (going the long way round)
+  const cx = 32, cy = 32, r = 24;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const sx = cx + r * Math.cos(toRad(135)); // start x ≈ 14.97
+  const sy = cy + r * Math.sin(toRad(135)); // start y ≈ 48.97  (bottom-left)
+  const ex = cx + r * Math.cos(toRad(45));  // end x   ≈ 48.97
+  const ey = cy + r * Math.sin(toRad(45));  // end y   ≈ 48.97  (bottom-right)
+  // large-arc-flag=1 because 300° > 180°, sweep-flag=1 (clockwise)
+  const arcPath = `M ${sx.toFixed(2)} ${sy.toFixed(2)} A ${r} ${r} 0 1 1 ${ex.toFixed(2)} ${ey.toFixed(2)}`;
 
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 100 100"
+      viewBox="0 0 64 64"
       width={size}
       height={size}
       className={className}
       aria-label="goState logo"
     >
       <defs>
-        <linearGradient id={`${uid}-bg`} x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor={bgFrom} />
-          <stop offset="100%" stopColor={bgTo} />
+        {/* Main top-to-bottom gradient */}
+        <linearGradient id={`${uid}-g`} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%"   stopColor={g0} />
+          <stop offset="100%" stopColor={g1} />
         </linearGradient>
-
-        {/* Main fire gradient — diagonal, warm top to hot base */}
-        <linearGradient id={`${uid}-a`} x1="20" y1="10" x2="80" y2="90" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor={c0} />
-          <stop offset="45%"  stopColor={c1} />
-          <stop offset="100%" stopColor={c2} />
-        </linearGradient>
-
-        {/* Darker variant for tail / depth */}
-        <linearGradient id={`${uid}-b`} x1="10" y1="50" x2="60" y2="100" gradientUnits="userSpaceOnUse">
-          <stop offset="0%"   stopColor={c1} />
-          <stop offset="100%" stopColor={c2} stopOpacity="0.7" />
+        {/* Diagonal variant for the check to give depth */}
+        <linearGradient id={`${uid}-c`} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%"   stopColor={g0} />
+          <stop offset="100%" stopColor={g1} />
         </linearGradient>
       </defs>
 
-      {/* Rounded square background */}
-      <rect width="100" height="100" rx="22" fill={`url(#${uid}-bg)`} />
+      {/* Background */}
+      <rect width="64" height="64" rx="13" fill={bg} />
 
-      {/*
-        ═══════════════════════════════════════════════════
-        PHOENIX — filled silhouette, proper bird anatomy
-        Viewbox: 100×100
-
-        Layout:
-          • Head: top-right area, small rounded teardrop
-          • Body: central diagonal mass, thick
-          • Upper wing: arches up from body centre, broad
-          • Lower wing: fans out below body
-          • Tail feathers: 3 flowing plumes bottom-left
-        ═══════════════════════════════════════════════════
-      */}
-
-      {/* ── TAIL FEATHERS (bottom-left, layered) ── */}
-      {/* Feather 1 — outermost, longest */}
+      {/* ── Open arc ring — "run indicator" ── */}
       <path
-        d="M 30 72 C 20 80 12 88 16 96 C 20 100 26 96 28 88 C 30 82 32 78 36 74 Z"
-        fill={`url(#${uid}-b)`}
-        opacity="0.9"
-      />
-      {/* Feather 2 — middle */}
-      <path
-        d="M 36 70 C 28 76 22 84 28 93 C 32 98 38 93 38 85 C 38 79 40 74 44 70 Z"
-        fill={`url(#${uid}-b)`}
-        opacity="0.75"
-      />
-      {/* Feather 3 — innermost */}
-      <path
-        d="M 44 68 C 38 73 34 80 40 88 C 44 93 50 88 48 81 C 47 76 48 71 52 68 Z"
-        fill={`url(#${uid}-b)`}
-        opacity="0.6"
+        d={arcPath}
+        fill="none"
+        stroke={`url(#${uid}-g)`}
+        strokeWidth="4.5"
+        strokeLinecap="round"
       />
 
-      {/* ── LOWER WING (fans downward-right from body) ── */}
-      <path
-        d="M 42 58
-           C 36 64 28 68 18 70
-           C 14 71 12 68 15 66
-           C 22 62 30 58 36 52
-           C 38 50 40 48 42 46
-           C 46 54 44 56 42 58 Z"
-        fill={`url(#${uid}-a)`}
-        opacity="0.85"
+      {/* ── Checkmark — "test passed" ── */}
+      {/* Left leg: small downward stroke */}
+      <polyline
+        points="19,32 27,41 45,22"
+        fill="none"
+        stroke={`url(#${uid}-c)`}
+        strokeWidth="4.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
-
-      {/* ── UPPER WING (arches high above body) ── */}
-      <path
-        d="M 48 44
-           C 44 34 38 22 28 14
-           C 24 11 20 12 20 16
-           C 20 20 26 24 32 30
-           C 38 36 42 40 46 48
-           C 46 48 48 46 48 44 Z"
-        fill={`url(#${uid}-a)`}
-      />
-
-      {/* ── BODY — central teardrop mass ── */}
-      <path
-        d="M 44 52
-           C 40 44 42 34 50 26
-           C 56 20 64 18 70 20
-           C 76 22 78 28 74 34
-           C 70 40 62 44 56 48
-           C 52 50 48 52 44 52 Z"
-        fill={`url(#${uid}-a)`}
-      />
-
-      {/* ── HEAD — rounded teardrop, top-right ── */}
-      <path
-        d="M 68 14
-           C 64 10 58 10 56 14
-           C 54 18 56 24 60 26
-           C 64 28 70 26 72 22
-           C 74 18 72 16 68 14 Z"
-        fill={`url(#${uid}-a)`}
-      />
-
-      {/* ── BEAK — small sharp triangle ── */}
-      <path
-        d="M 72 16 L 82 11 L 76 20 Z"
-        fill={c0}
-        opacity="0.9"
-      />
-
-      {/* ── EYE — dark dot ── */}
-      <circle cx="63" cy="18" r="2.2" fill={bgFrom} opacity="0.8" />
     </svg>
   );
 }
