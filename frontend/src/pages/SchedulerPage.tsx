@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { schedulesApi, projectsApi, agentsApi } from '../lib/api';
+import { schedulesApi, projectsApi, agentsApi, environmentsApi } from '../lib/api';
 import { formatDate } from '../lib/utils';
 import { Plus, Clock, Trash2, Loader2, ToggleLeft, ToggleRight, CalendarClock, PlayCircle, ChevronRight } from 'lucide-react';
 import { useToast } from '../components/Toast';
@@ -57,6 +57,7 @@ export default function SchedulerPage() {
   const [form, setForm] = useState({
     label: '',
     project_id: '',
+    environment_id: '',
     cron: '0 8 * * *',
     agent_id: '',
     browsers: 'chromium',
@@ -66,10 +67,16 @@ export default function SchedulerPage() {
   const { data, isLoading } = useQuery({ queryKey: ['schedules'], queryFn: () => schedulesApi.list(), refetchInterval: 30000 });
   const { data: projectsData } = useQuery({ queryKey: ['projects'], queryFn: () => projectsApi.list() });
   const { data: agentsData } = useQuery({ queryKey: ['agents'], queryFn: () => agentsApi.list() });
+  const { data: envsData } = useQuery({
+    queryKey: ['environments', form.project_id],
+    queryFn: () => environmentsApi.list(form.project_id),
+    enabled: !!form.project_id,
+  });
 
   const schedules: any[] = data?.data?.schedules || [];
   const projects: any[] = projectsData?.data?.projects || [];
   const agents: any[] = agentsData?.data?.agents || [];
+  const envs: any[] = envsData?.data?.items || [];
 
   const activeCount = schedules.filter(s => s.enabled).length;
 
@@ -77,6 +84,7 @@ export default function SchedulerPage() {
     mutationFn: () => schedulesApi.create({
       label: form.label,
       project_id: form.project_id || undefined,
+      environment_id: form.environment_id || undefined,
       cron: form.cron,
       agent_id: form.agent_id || undefined,
       browsers: [form.browsers],
@@ -86,7 +94,7 @@ export default function SchedulerPage() {
       qc.invalidateQueries({ queryKey: ['schedules'] });
       setShowForm(false);
       setCustomCron(false);
-      setForm({ label: '', project_id: '', cron: '0 8 * * *', agent_id: '', browsers: 'chromium', enabled: true });
+      setForm({ label: '', project_id: '', environment_id: '', cron: '0 8 * * *', agent_id: '', browsers: 'chromium', enabled: true });
       toast.success('Agendamento criado');
     },
     onError: () => toast.error('Erro ao criar agendamento'),
@@ -187,6 +195,17 @@ export default function SchedulerPage() {
                 <option value="webkit">WebKit</option>
               </select>
             </div>
+            {envs.length > 0 && (
+              <div>
+                <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Ambiente</label>
+                <select className="input" value={form.environment_id} onChange={e => setForm(f => ({ ...f, environment_id: e.target.value }))}>
+                  <option value="">Nenhum (sem variáveis)</option>
+                  {envs.map((e: any) => (
+                    <option key={e.id} value={e.id}>{e.name} ({e.variables?.length || 0} vars)</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           {create.isError && <p className="text-xs text-red-400">{(create.error as any)?.response?.data?.error}</p>}
           <div className="flex gap-2 pt-1">
