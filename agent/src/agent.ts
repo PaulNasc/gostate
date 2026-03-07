@@ -526,9 +526,20 @@ async function patchStatus(
   try {
     await axios.patch(`${apiBase}/api/executions/${execId}/status`, { status, logs, duration_ms, steps }, {
       headers: { 'X-Agent-Token': AGENT_TOKEN },
+      timeout: 10000,
     });
   } catch (e: any) {
-    console.error(`[Agent] Falha ao atualizar status: ${e.message}`);
+    console.error(`[Agent] Falha ao atualizar status via HTTP: ${e.message}`);
+    // Fallback: emit via socket so the backend can still update the execution
+    // even when the HTTP endpoint is unreachable (e.g. localhost vs host.docker.internal mismatch)
+    try {
+      if (socket?.connected) {
+        socket.emit('exec:status', { execId, status, logs, duration_ms, steps });
+        console.log(`[Agent] Status emitido via socket como fallback: ${execId} → ${status}`);
+      }
+    } catch (se: any) {
+      console.error(`[Agent] Fallback socket também falhou: ${se.message}`);
+    }
   }
 }
 

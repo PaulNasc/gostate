@@ -104,6 +104,60 @@ export function initSocket(server: HttpServer): SocketServer {
         io.emit('exec:log', { ...data, line: cleanLine });
       });
 
+      // Fallback: agent emits status via socket when HTTP PATCH /status fails
+      // (e.g. backendUrl resolved to localhost inside Docker)
+      socket.on('exec:status', (data: { execId: string; status: string; logs?: string; duration_ms?: number; steps?: any[] }) => {
+        try {
+          const { execId, status, logs = '', duration_ms = 0, steps = [] } = data;
+          const validStatuses = ['running', 'passed', 'failed', 'error', 'cancelled'];
+          if (!execId || !validStatuses.includes(status)) return;
+
+          const execution = db.prepare('SELECT id, agent_id, status FROM executions WHERE id = ?').get(execId) as any;
+          if (!execution) return;
+
+          console.log(`[Socket] exec:status fallback — ${execId}: ${execution.status} → ${status} (agente: ${agentName})`);
+
+          const isTerminal = ['passed', 'failed', 'error', 'cancelled'].includes(status);
+          const now = new Date().toISOString();
+
+          if (status === 'running') {
+            db.prepare(`UPDATE executions SET status = 'running', started_at = COALESCE(started_at, ?) WHERE id = ?`).run(now, execId);
+          } else if (isTerminal) {
+            db.prepare(`
+              UPDATE executions
+              SET status = ?, logs = COALESCE(?, logs), duration_ms = COALESCE(?, duration_ms),
+                  finished_at = COALESCE(finished_at, ?),
+                  started_at = COALESCE(started_at, ?)
+              WHERE id = ?
+            `).run(status, logs || null, duration_ms || null, now, now, execId);
+
+            // Save step results if provided
+            if (steps && steps.length > 0) {
+              const insertStep = db.prepare(`
+                INSERT OR IGNORE INTO execution_steps
+                  (id, execution_id, step_index, name, type, status, duration_ms, error_message, timestamp_ms)
+                VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)
+              `);
+              for (const step of steps) {
+                insertStep.run(execId, step.step_index ?? 0, step.name ?? '', step.type ?? 'action',
+                  step.status ?? 'passed', step.duration_ms ?? 0, step.error_message ?? null, step.timestamp_ms ?? null);
+              }
+            }
+
+            // Free the agent
+            if (execution.agent_id) {
+              db.prepare("UPDATE agents SET status = 'online' WHERE id = ?").run(execution.agent_id);
+            }
+
+            io.emit('exec:finished', { id: execId, status });
+          }
+
+          io.emit('exec:update', { id: execId, status });
+        } catch (err: any) {
+          console.error(`[Socket] Erro ao processar exec:status: ${err.message}`);
+        }
+      });
+
       socket.on('disconnect', () => {
         clearTimeout(heartbeatTimer);
         console.log(`[Socket] Agente desconectado: ${agentName}`);
