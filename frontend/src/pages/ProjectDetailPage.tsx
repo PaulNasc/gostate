@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, suitesApi, testcasesApi, executionsApi, agentsApi, environmentsApi } from '../lib/api';
 import { formatDate, statusBadgeClass, statusLabel } from '../lib/utils';
-import { ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, TestTube2, Loader2, FolderOpen, Play, Pencil, PlayCircle, ClipboardList, Layers, Users, Tag, Search, X } from 'lucide-react';
+import { ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, TestTube2, Loader2, FolderOpen, Play, Pencil, PlayCircle, ClipboardList, Layers, Users, Tag, Search, X, ArrowRightLeft } from 'lucide-react';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -44,6 +44,16 @@ export default function ProjectDetailPage() {
   const deleteTc = useMutation({
     mutationFn: ({ suiteId, tcId }: { suiteId: string; tcId: string }) => testcasesApi.remove(suiteId, tcId),
     onSuccess: (_r, vars) => qc.invalidateQueries({ queryKey: ['testcases', vars.suiteId] }),
+  });
+
+  const moveTc = useMutation({
+    mutationFn: ({ suiteId, tcId, targetSuiteId }: { suiteId: string; tcId: string; targetSuiteId: string }) =>
+      testcasesApi.move(suiteId, tcId, targetSuiteId),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ['testcases', vars.suiteId] });
+      qc.invalidateQueries({ queryKey: ['testcases', vars.targetSuiteId] });
+      qc.invalidateQueries({ queryKey: ['suites', projectId] });
+    },
   });
 
   const [runModal, setRunModal] = useState<{ tcId: string; title: string } | null>(null);
@@ -156,6 +166,8 @@ export default function ProjectDetailPage() {
               onTcTitle={setTcTitle}
               onCreateTc={() => createTc.mutate(suite.id)}
               onDeleteTc={(tcId: string) => { if (confirm('Excluir caso de teste?')) deleteTc.mutate({ suiteId: suite.id, tcId }); }}
+              onMoveTc={(tcId: string, targetSuiteId: string) => moveTc.mutate({ suiteId: suite.id, tcId, targetSuiteId })}
+              otherSuites={suites.filter(s => s.id !== suite.id)}
               onRename={(id: string, name: string) => updateSuite.mutate({ id, name })}
               onRunTc={(tcId: string, title: string) => setRunModal({ tcId, title })}
               onRunSuite={() => setRunSuiteModal({ suiteId: suite.id, suiteName: suite.name })}
@@ -385,7 +397,7 @@ function RunSuiteModal({ suiteId, suiteName, onClose }: { suiteId: string; suite
   );
 }
 
-function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onShowTcForm, tcTitle, onTcTitle, onCreateTc, onDeleteTc, onRunTc, onRunSuite, onEditTc, creating, tagFilter, searchFilter }: any) {
+function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onShowTcForm, tcTitle, onTcTitle, onCreateTc, onDeleteTc, onMoveTc, otherSuites, onRunTc, onRunSuite, onEditTc, creating, tagFilter, searchFilter }: any) {
   const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ['testcases', suite.id],
@@ -516,6 +528,33 @@ function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onSh
                 <button className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-green-500/10 hover:text-green-400 transition-all" style={{ color: 'var(--text-muted)' }} title="Executar" onClick={() => onRunTc(tc.id, tc.title)}>
                   <Play className="w-3 h-3" />
                 </button>
+                {otherSuites.length > 0 && (
+                  <div className="relative group/move">
+                    <button
+                      className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-amber-500/10 hover:text-amber-400 transition-all"
+                      style={{ color: 'var(--text-muted)' }}
+                      title="Mover para outra suite"
+                    >
+                      <ArrowRightLeft className="w-3 h-3" />
+                    </button>
+                    <div
+                      className="absolute right-0 top-full mt-0.5 hidden group-hover/move:block z-30 rounded-lg border shadow-xl min-w-[160px] overflow-hidden"
+                      style={{ background: 'var(--surface-2)', borderColor: 'var(--border)' }}
+                    >
+                      <p className="px-3 py-1.5 text-xs font-semibold border-b" style={{ color: 'var(--text-muted)', borderColor: 'var(--border)' }}>Mover para</p>
+                      {otherSuites.map((s: any) => (
+                        <button
+                          key={s.id}
+                          className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 transition-colors truncate"
+                          style={{ color: 'var(--text)' }}
+                          onClick={() => onMoveTc(tc.id, s.id)}
+                        >
+                          {s.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <button className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/10 hover:text-red-400 transition-all" style={{ color: 'var(--text-muted)' }} onClick={() => onDeleteTc(tc.id)}>
                   <Trash2 className="w-3 h-3" />
                 </button>

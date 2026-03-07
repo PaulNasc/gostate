@@ -96,6 +96,20 @@ router.delete('/:tcId', (req: AuthRequest, res: Response) => {
   res.json({ message: 'Caso de teste excluído com sucesso' });
 });
 
+router.patch('/:tcId/move', (req: AuthRequest, res: Response) => {
+  const db = getDb();
+  const tc = db.prepare('SELECT * FROM test_cases WHERE id = ? AND suite_id = ?').get(req.params.tcId, req.params.suiteId) as any;
+  if (!tc) { res.status(404).json({ error: 'Caso de teste não encontrado' }); return; }
+  const { target_suite_id } = req.body;
+  if (!target_suite_id) { res.status(400).json({ error: 'target_suite_id é obrigatório' }); return; }
+  const targetSuite = db.prepare('SELECT * FROM suites WHERE id = ?').get(target_suite_id) as any;
+  if (!targetSuite) { res.status(404).json({ error: 'Suite de destino não encontrada' }); return; }
+  const srcSuite = db.prepare('SELECT project_id FROM suites WHERE id = ?').get(req.params.suiteId) as any;
+  if (srcSuite.project_id !== targetSuite.project_id) { res.status(400).json({ error: 'Suites pertencem a projetos diferentes' }); return; }
+  db.prepare("UPDATE test_cases SET suite_id = ?, updated_at = datetime('now') WHERE id = ?").run(target_suite_id, req.params.tcId);
+  res.json({ message: 'Caso de teste movido com sucesso' });
+});
+
 router.get('/:tcId/versions', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const versions = db.prepare(`

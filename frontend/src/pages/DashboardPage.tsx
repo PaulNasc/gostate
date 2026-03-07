@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { statsApi, executionsApi, API_BASE } from '../lib/api';
 import { formatDate, formatDuration, statusBadgeClass, statusLabel } from '../lib/utils';
-import { FolderOpen, PlayCircle, Server, TrendingUp, TestTube2, Layers, Loader2, ArrowRight } from 'lucide-react';
+import { FolderOpen, PlayCircle, Server, TrendingUp, TestTube2, Layers, Loader2, ArrowRight, Zap } from 'lucide-react';
 import { io as socketIo } from 'socket.io-client';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -26,6 +26,34 @@ export default function DashboardPage() {
     refetchInterval: 3000,
   });
   const liveExecs: any[] = liveData?.data?.executions || [];
+
+  const { data: flakyData } = useQuery({
+    queryKey: ['executions-flaky'],
+    queryFn: () => executionsApi.list({ limit: 200 }),
+    refetchInterval: 60000,
+  });
+  const flakyExecs: any[] = flakyData?.data?.executions || [];
+
+  const flakyTcs = (() => {
+    const byTc: Record<string, { title: string; statuses: string[] }> = {};
+    flakyExecs.forEach(e => {
+      if (!e.test_case_id || !e.tc_title) return;
+      if (!byTc[e.test_case_id]) byTc[e.test_case_id] = { title: e.tc_title, statuses: [] };
+      byTc[e.test_case_id].statuses.push(e.status);
+    });
+    return Object.entries(byTc)
+      .filter(([, { statuses }]) => statuses.length >= 4)
+      .map(([id, { title, statuses }]) => {
+        const finals = statuses.map(s => s === 'passed' ? 1 : s === 'failed' || s === 'error' ? 0 : -1).filter(s => s !== -1);
+        let switches = 0;
+        for (let i = 1; i < finals.length; i++) if (finals[i] !== finals[i - 1]) switches++;
+        const score = finals.length > 1 ? switches / (finals.length - 1) : 0;
+        return { id, title, score, total: finals.length };
+      })
+      .filter(t => t.score > 0.2)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5);
+  })();
 
   useEffect(() => {
     const token = localStorage.getItem('gostate:token');
@@ -150,6 +178,36 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* Flakiness Widget */}
+      {flakyTcs.length > 0 && (
+        <div className="card p-4">
+          <div className="flex items-center gap-2 mb-3">
+            <Zap className="w-4 h-4 text-amber-400" />
+            <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Top Casos Flaky</h2>
+            <span className="text-xs ml-1" style={{ color: 'var(--text-muted)' }}>instabilidade nos últimos runs</span>
+          </div>
+          <div className="space-y-2">
+            {flakyTcs.map(tc => (
+              <div key={tc.id} className="flex items-center gap-3">
+                <span className="text-xs truncate flex-1" style={{ color: 'var(--text)' }} title={tc.title}>{tc.title}</span>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${Math.round(tc.score * 100)}%`, background: tc.score > 0.6 ? '#ef4444' : tc.score > 0.4 ? '#f59e0b' : '#eab308' }}
+                    />
+                  </div>
+                  <span className="text-xs font-mono w-8 text-right" style={{ color: tc.score > 0.6 ? '#f87171' : tc.score > 0.4 ? '#fbbf24' : '#a3e635' }}>
+                    {Math.round(tc.score * 100)}%
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{tc.total} runs</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Recent Executions — fixed 8 rows, no scroll */}
       <div className="card p-4">
