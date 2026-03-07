@@ -29,11 +29,21 @@
 | 22 | ProjectDetailPage: última execução por TC com badge clicável + contador exec_count |
 | 23 | Backend: test cases list enriquecida com last_exec_status, last_exec_at, last_exec_id |
 
-## ⏳ Pendente
+| 24 | TestCaseEditorPage: sidebar de histórico de versões com restaurar | baixa |
+| 25 | ProjectsPage: running_count badge animado por projeto | baixa |
+| 26 | SchedulerPage: toast nos CRUD de agendamentos | baixa |
+| 27 | IntegrationsPage: toast nos CRUD de integrações | baixa |
+
+## ⏳ Pendente — Próximas Fases
 
 | # | Feature | Prioridade |
 |---|---------|-----------|
-| 24 | TestCaseEditorPage: aba de histórico de versões do TC | baixa |
-| 25 | ProjectsPage: contador de execuções pendentes/rodando por projeto | baixa |
-| 26 | SchedulerPage: toast nos CRUD de agendamentos | baixa |
-| 27 | IntegrationsPage: toast nos CRUD de integrações | baixa |
+| 28 | ReportsPage: exportar relatório como PDF/CSV | média |
+| 29 | TestPlansPage: re-executar plano falho (só os TCs que falharam) | alta |
+| 30 | ProjectDetailPage: mover/copiar TC entre suites | média |
+| 31 | ExecutionsPage: comparar duas execuções lado a lado | baixa |
+| 32 | AgentsPage: capabilities por agente (browsers suportados declarados) | média |
+| 33 | DashboardPage: widget de flakiness top-5 TCs mais instáveis | média |
+| 34 | Admin: guia "Como conectar agente" no painel Admin | alta |
+| 35 | SchedulerPage: agendamento de TestPlan (além de TC individual) | alta |
+| 36 | Backend: API de auditoria — log de ações por usuário | baixa |
