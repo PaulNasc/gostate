@@ -122,11 +122,22 @@ export default function ProjectsPage() {
                   <TestTube2 className="w-3.5 h-3.5" />
                   <span>{p.tc_count || 0} casos</span>
                 </div>
-                {p.last_exec_status ? (
-                  <span className={`${statusBadgeClass(p.last_exec_status)} text-xs ml-auto`}>{statusLabel(p.last_exec_status)}</span>
-                ) : (
-                  <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>{formatDate(p.created_at)}</span>
-                )}
+                <div className="ml-auto flex items-center gap-2">
+                  {(p.running_count ?? 0) > 0 && (
+                    <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                      <span className="relative flex h-1.5 w-1.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-blue-400" />
+                      </span>
+                      {p.running_count} rodando
+                    </span>
+                  )}
+                  {p.last_exec_status ? (
+                    <span className={`${statusBadgeClass(p.last_exec_status)} text-xs`}>{statusLabel(p.last_exec_status)}</span>
+                  ) : (
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatDate(p.created_at)}</span>
+                  )}
+                </div>
                 <ChevronRight className="w-4 h-4 group-hover:text-blue-400 transition-colors" style={{ color: 'var(--text-muted)' }} />
               </div>
             </div>

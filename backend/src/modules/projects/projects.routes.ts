@@ -20,6 +20,7 @@ router.get('/', (req: AuthRequest, res: Response) => {
       (SELECT COUNT(*) FROM test_cases tc JOIN suites s ON tc.suite_id = s.id WHERE s.project_id = p.id) as tc_count,
       (SELECT COUNT(*) FROM executions e JOIN test_cases tc ON tc.id = e.test_case_id JOIN suites s ON s.id = tc.suite_id WHERE s.project_id = p.id AND e.status IN ('passed','failed','error')) as exec_total,
       (SELECT COUNT(*) FROM executions e JOIN test_cases tc ON tc.id = e.test_case_id JOIN suites s ON s.id = tc.suite_id WHERE s.project_id = p.id AND e.status = 'passed') as exec_passed,
+      (SELECT COUNT(*) FROM executions e JOIN test_cases tc ON tc.id = e.test_case_id JOIN suites s ON s.id = tc.suite_id WHERE s.project_id = p.id AND e.status IN ('queued','running')) as running_count,
       (SELECT e.status FROM executions e JOIN test_cases tc ON tc.id = e.test_case_id JOIN suites s ON s.id = tc.suite_id WHERE s.project_id = p.id ORDER BY e.created_at DESC LIMIT 1) as last_exec_status,
       (SELECT e.created_at FROM executions e JOIN test_cases tc ON tc.id = e.test_case_id JOIN suites s ON s.id = tc.suite_id WHERE s.project_id = p.id ORDER BY e.created_at DESC LIMIT 1) as last_exec_at
     FROM projects p JOIN users u ON u.id = p.created_by
