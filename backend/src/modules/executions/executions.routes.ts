@@ -79,7 +79,8 @@ router.get('/', authenticate, (req: AuthRequest, res: Response) => {
   if (conditions.length) query += ' WHERE ' + conditions.join(' AND ');
   query += ` ORDER BY
     CASE e.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END ASC,
-    e.created_at DESC
+    CASE e.status WHEN 'queued' THEN e.created_at END ASC,
+    CASE e.status WHEN 'queued' THEN NULL ELSE e.created_at END DESC
     LIMIT ?`;
   params.push(parseInt(limit));
   const executions = db.prepare(query).all(...params);
@@ -238,11 +239,14 @@ router.patch('/:id/status', authenticateAgentOrUser, (req: Request, res: Respons
   }
 
   const updated = db.prepare(`
-    SELECT e.*, tc.title as tc_title, p.name as project_name
+    SELECT e.*, tc.title as tc_title,
+      COALESCE(s.project_id, su.project_id) as project_id,
+      p.name as project_name
     FROM executions e
     LEFT JOIN test_cases tc ON tc.id = e.test_case_id
     LEFT JOIN suites su ON su.id = tc.suite_id
-    LEFT JOIN projects p ON p.id = su.project_id
+    LEFT JOIN scripts s ON s.id = e.script_id
+    LEFT JOIN projects p ON p.id = COALESCE(s.project_id, su.project_id)
     WHERE e.id = ?
   `).get(req.params.id) as any;
 
@@ -269,10 +273,16 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
   if (!event) return;
 
   // Fetch integrations that match: enabled + (global OR same project)
-  const integrations = db.prepare(
-    `SELECT * FROM integrations WHERE enabled = 1
-     AND (project_id IS NULL OR project_id = ?)`
-  ).all(exec.project_id || null) as any[];
+  let integrations: any[];
+  if (exec.project_id) {
+    integrations = db.prepare(
+      `SELECT * FROM integrations WHERE enabled = 1 AND (project_id IS NULL OR project_id = ?)`
+    ).all(exec.project_id) as any[];
+  } else {
+    integrations = db.prepare(
+      `SELECT * FROM integrations WHERE enabled = 1 AND project_id IS NULL`
+    ).all() as any[];
+  }
 
   for (const intg of integrations) {
     const events: string[] = JSON.parse(intg.events || '[]');
