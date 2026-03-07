@@ -358,6 +358,26 @@ function runMigrations(db: Database.Database): void {
     }
   ];
 
+  const v10: any = {
+    version: 10,
+    sql: `
+      CREATE TABLE IF NOT EXISTS audit_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+        action TEXT NOT NULL,
+        entity TEXT NOT NULL,
+        entity_id TEXT,
+        detail TEXT,
+        ip TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+      CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity);
+    `
+  };
+  migrations.push(v10);
+
   for (const migration of migrations) {
     if (!applied.includes(migration.version)) {
       db.exec(migration.sql);

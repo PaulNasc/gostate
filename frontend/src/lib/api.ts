@@ -94,6 +94,11 @@ export const statsApi = {
   get: () => api.get('/api/stats'),
 };
 
+export const auditApi = {
+  list: (params?: { user_id?: string; entity?: string; action?: string; limit?: number; offset?: number }) =>
+    api.get('/api/audit', { params }),
+};
+
 export const schedulesApi = {
   list: () => api.get('/api/schedules'),
   create: (data: any) => api.post('/api/schedules', data),

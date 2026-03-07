@@ -6,6 +6,7 @@ import fs from 'fs';
 import multer from 'multer';
 import { getDb } from '../../db/schema';
 import { authenticate, AuthRequest } from '../../shared/middleware/auth';
+import { logAudit } from '../../shared/audit';
 import { getIo } from '../../realtime/gateway';
 import { buildPayload } from '../integrations/integrations.routes';
 
@@ -152,6 +153,7 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
     io.to(`agent:${availableAgent.id}`).emit('exec:dispatch', runConfig);
   }
 
+  logAudit({ user_id: (req as AuthRequest).user?.id, action: 'create', entity: 'execution', entity_id: execution.id, detail: `TC: ${test_case_id || 'N/A'}`, ip: req.ip });
   res.status(201).json({ execution });
 });
 
@@ -182,6 +184,7 @@ router.post('/:id/cancel', authenticate, (req: AuthRequest, res: Response) => {
   db.prepare('UPDATE executions SET status = ?, finished_at = datetime(\'now\') WHERE id = ?').run('cancelled', req.params.id);
   const io = getIo();
   io.emit('exec:cancelled', { id: req.params.id });
+  logAudit({ user_id: req.user!.id, action: 'cancel', entity: 'execution', entity_id: req.params.id, ip: req.ip });
   res.json({ message: 'Execução cancelada' });
 });
 

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../../db/schema';
 import { authenticate, AuthRequest } from '../../shared/middleware/auth';
+import { logAudit } from '../../shared/audit';
 
 const router = Router();
 router.use(authenticate);
@@ -37,6 +38,7 @@ router.post('/', (req: AuthRequest, res: Response) => {
   const id = uuidv4();
   db.prepare('INSERT INTO projects (id, name, description, created_by) VALUES (?, ?, ?, ?)').run(id, name, description || null, req.user!.id);
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(id);
+  logAudit({ user_id: req.user!.id, action: 'create', entity: 'project', entity_id: id, detail: name, ip: req.ip });
   res.status(201).json({ project });
 });
 
@@ -55,6 +57,7 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
   if (!project) { res.status(404).json({ error: 'Projeto não encontrado' }); return; }
   const { name, description } = parse.data;
   db.prepare('UPDATE projects SET name = ?, description = ?, updated_at = datetime(\'now\') WHERE id = ?').run(name, description || null, req.params.id);
+  logAudit({ user_id: req.user!.id, action: 'update', entity: 'project', entity_id: req.params.id, detail: name, ip: req.ip });
   res.json({ project: { ...project, name, description } });
 });
 
@@ -63,6 +66,7 @@ router.delete('/:id', (req: AuthRequest, res: Response) => {
   const project = db.prepare('SELECT * FROM projects WHERE id = ?').get(req.params.id) as any;
   if (!project) { res.status(404).json({ error: 'Projeto não encontrado' }); return; }
   db.prepare('DELETE FROM projects WHERE id = ?').run(req.params.id);
+  logAudit({ user_id: req.user!.id, action: 'delete', entity: 'project', entity_id: req.params.id, detail: project.name, ip: req.ip });
   res.json({ message: 'Projeto excluído com sucesso' });
 });
 

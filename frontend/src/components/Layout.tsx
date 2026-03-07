@@ -113,6 +113,16 @@ function IconUsers({ active }: { active: boolean }) {
   );
 }
 
+function IconAudit({ active }: { active: boolean }) {
+  const c = active ? '#a78bfa' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M8 2L3 4v4c0 3 2.5 5 5 6 2.5-1 5-3 5-6V4L8 2z" stroke={c} strokeWidth="1.3" strokeLinejoin="round" opacity={active ? 0.85 : 0.45} />
+      <path d="M5.5 8l2 2 3-3" stroke={c} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" opacity={active ? 0.9 : 0.5} />
+    </svg>
+  );
+}
+
 const navItems = [
   { to: '/dashboard',    Icon: IconDashboard,    label: 'Dashboard' },
   { to: '/projects',     Icon: IconProjects,     label: 'Projetos' },
@@ -123,6 +133,7 @@ const navItems = [
   { to: '/integrations', Icon: IconIntegrations, label: 'Integrações' },
   { to: '/agents',       Icon: IconAgents,       label: 'Agentes' },
   { to: '/users',        Icon: IconUsers,        label: 'Usuários', adminOnly: true },
+  { to: '/audit',        Icon: IconAudit,        label: 'Auditoria', adminOnly: true },
 ];
 
 export default function Layout() {
