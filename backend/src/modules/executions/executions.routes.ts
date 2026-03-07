@@ -327,17 +327,19 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
       }
     }
 
+    let artifactFiles: Array<{ filename: string; path: string; size_bytes: number; url: string }> | undefined;
     if (flags.artifacts) {
       const arts = db.prepare(
-        `SELECT filename FROM execution_artifacts WHERE execution_id = ? ORDER BY created_at ASC`
+        `SELECT filename, path, size_bytes, url FROM execution_artifacts WHERE execution_id = ? ORDER BY created_at ASC`
       ).all(exec.id) as any[];
       if (arts.length > 0) {
         artifacts = arts.map((a: any) => a.filename);
+        artifactFiles = arts;
       }
     }
 
     try {
-      const payload = buildPayload(intg.type, {
+      const webhookData = {
         status,
         title: exec.tc_title || `Execução #${exec.id.slice(0, 8)}`,
         project: exec.project_name || '—',
@@ -346,16 +348,65 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
         steps: stepsData,
         detailed_report: detailedReport,
         artifacts,
-      });
+      };
+      const payload = buildPayload(intg.type, webhookData);
 
-      await fetch(intg.webhook_url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      // Discord: send files as multipart attachments if artifacts exist and files are present
+      if (intg.type === 'discord' && artifactFiles && artifactFiles.length > 0) {
+        await sendDiscordWithFiles(intg.webhook_url, payload, artifactFiles);
+      } else {
+        await fetch(intg.webhook_url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+      }
     } catch (_err) {
     }
   }
+}
+
+const DISCORD_MAX_FILE_BYTES = 8 * 1024 * 1024; // 8 MB per file limit
+
+async function sendDiscordWithFiles(
+  webhookUrl: string,
+  payload: object,
+  artifactFiles: Array<{ filename: string; path: string; size_bytes: number; url: string }>
+) {
+  const ARTIFACTS_BASE = path.join(__dirname, '..', '..', '..', 'data');
+
+  // Filter to files that exist on disk and are within Discord's 8MB limit
+  const sendable = artifactFiles.filter(a => {
+    const fullPath = path.join(ARTIFACTS_BASE, a.path);
+    return fs.existsSync(fullPath) && a.size_bytes <= DISCORD_MAX_FILE_BYTES;
+  }).slice(0, 10); // Discord allows max 10 files per message
+
+  if (sendable.length === 0) {
+    // No local files available — fall back to plain JSON
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    return;
+  }
+
+  const form = new FormData();
+  form.append('payload_json', JSON.stringify(payload));
+
+  for (let i = 0; i < sendable.length; i++) {
+    const a = sendable[i];
+    const fullPath = path.join(ARTIFACTS_BASE, a.path);
+    const buffer = fs.readFileSync(fullPath);
+    const mimeType = a.filename.endsWith('.webm') ? 'video/webm'
+      : a.filename.endsWith('.mp4') ? 'video/mp4'
+      : a.filename.endsWith('.png') ? 'image/png'
+      : a.filename.endsWith('.jpg') || a.filename.endsWith('.jpeg') ? 'image/jpeg'
+      : 'application/octet-stream';
+    form.append(`files[${i}]`, new Blob([buffer], { type: mimeType }), a.filename);
+  }
+
+  await fetch(webhookUrl, { method: 'POST', body: form });
 }
 
 export default router;
