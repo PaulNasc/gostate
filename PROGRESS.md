@@ -42,12 +42,8 @@
 | 34 | Admin: guia "Como conectar agente" (DeployPanel no admin/AgentsPage) | alta |
 | 35 | SchedulerPage: agendamento de TestPlan — modo TC/Plano + backend test_plan_id | alta |
 
-## ⏳ Pendente — Próximas Fases
-
-| # | Feature | Prioridade |
-|---|---------|-----------|
-| 31 | ExecutionsPage: comparar duas execuções lado a lado | baixa |
-| 36 | Backend: API de auditoria — log de ações por usuário | baixa |
-| 37 | ProjectDetailPage: copiar TC (duplicar dentro do projeto) | baixa |
-| 38 | SchedulerPage: edição inline de agendamento existente | baixa |
-| 39 | TestPlansPage: reordenar TCs dentro do plano (drag-drop) | baixa |
+| 31 | ExecutionsPage: comparar duas execuções lado a lado — split-view modal com steps | baixa |
+| 36 | Backend: API de auditoria (audit_logs) + AuditPage frontend com filtros e paginação | baixa |
+| 37 | ProjectDetailPage: duplicar TC (cópia na mesma suite — backend POST /duplicate) | baixa |
+| 38 | SchedulerPage: edição inline de label + cron (Pencil → inputs na linha → Check/X) | baixa |
+| 39 | TestPlansPage: reordenar TCs com drag-drop + modal + backend tc_titles no list | baixa |
