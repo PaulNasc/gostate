@@ -198,6 +198,8 @@ router.delete('/:id', requireRole('admin'), (req: AuthRequest, res: Response) =>
   const db = getDb();
   const agent = db.prepare('SELECT id FROM agents WHERE id = ?').get(req.params.id) as any;
   if (!agent) { res.status(404).json({ error: 'Agente não encontrado' }); return; }
+  db.prepare('UPDATE executions SET agent_id = NULL WHERE agent_id = ?').run(req.params.id);
+  db.prepare('UPDATE schedules SET agent_id = NULL WHERE agent_id = ?').run(req.params.id);
   db.prepare('DELETE FROM agents WHERE id = ?').run(req.params.id);
   res.json({ message: 'Agente removido com sucesso' });
 });
