@@ -58,10 +58,20 @@ router.get('/', (req: AuthRequest, res: Response) => {
   `).all(...params) as any[];
 
   res.json({
-    items: plans.map(p => ({
-      ...p,
-      test_case_ids: (() => { try { return JSON.parse(p.test_case_ids || '[]'); } catch { return []; } })(),
-    })),
+    items: plans.map(p => {
+      const tcIds: string[] = (() => { try { return JSON.parse(p.test_case_ids || '[]'); } catch { return []; } })();
+      const tcTitles = tcIds.length
+        ? db.prepare(`SELECT id, title FROM test_cases WHERE id IN (${tcIds.map(() => '?').join(',')})`)
+            .all(...tcIds) as { id: string; title: string }[]
+        : [];
+      const tcTitleMap: Record<string, string> = {};
+      tcTitles.forEach(t => { tcTitleMap[t.id] = t.title; });
+      return {
+        ...p,
+        test_case_ids: tcIds,
+        tc_titles: tcIds.map(id => ({ id, title: tcTitleMap[id] || id.slice(0, 8) })),
+      };
+    }),
     total: plans.length,
   });
 });

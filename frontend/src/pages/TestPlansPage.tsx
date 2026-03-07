@@ -6,7 +6,7 @@ import { formatDate } from '../lib/utils';
 import {
   Plus, Play, Trash2, Loader2, ClipboardList, CheckCircle2,
   XCircle, AlertCircle, RotateCcw, ChevronDown, ChevronUp, ArrowLeft,
-  Clock, RefreshCw,
+  Clock, RefreshCw, GripVertical, ListOrdered,
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 import { io as socketIo } from 'socket.io-client';
@@ -40,8 +40,12 @@ export default function TestPlansPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+  const [showTcOrder, setShowTcOrder] = useState<string | null>(null);
   const [form, setForm] = useState({ name: '', description: '', max_parallel: 1 });
   const [selectedTcIds, setSelectedTcIds] = useState<Set<string>>(new Set());
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [orderedTcIds, setOrderedTcIds] = useState<string[]>([]);
 
   const { data: plansData, isLoading } = useQuery({
     queryKey: ['test-plans', projectId],
@@ -127,6 +131,17 @@ export default function TestPlansPage() {
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Nenhuma falha para re-executar'),
   });
 
+  const updatePlan = useMutation({
+    mutationFn: ({ id, test_case_ids }: { id: string; test_case_ids: string[] }) =>
+      testPlansApi.update(id, { test_case_ids }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['test-plans', projectId] });
+      setShowTcOrder(null);
+      toast.success('Ordem dos casos atualizada');
+    },
+    onError: () => toast.error('Erro ao reordenar casos'),
+  });
+
   const deletePlan = useMutation({
     mutationFn: (id: string) => testPlansApi.remove(id),
     onSuccess: () => {
@@ -142,6 +157,26 @@ export default function TestPlansPage() {
       n.has(tcId) ? n.delete(tcId) : n.add(tcId);
       return n;
     });
+  };
+
+  const openTcOrder = (plan: any) => {
+    const ids: string[] = plan.test_case_ids || [];
+    setOrderedTcIds([...ids]);
+    setShowTcOrder(plan.id);
+    setDragIdx(null);
+    setDragOverIdx(null);
+  };
+
+  const handleDragStart = (i: number) => setDragIdx(i);
+  const handleDragOver = (e: React.DragEvent, i: number) => { e.preventDefault(); setDragOverIdx(i); };
+  const handleDrop = (i: number) => {
+    if (dragIdx === null || dragIdx === i) return;
+    const next = [...orderedTcIds];
+    const [moved] = next.splice(dragIdx, 1);
+    next.splice(i, 0, moved);
+    setOrderedTcIds(next);
+    setDragIdx(null);
+    setDragOverIdx(null);
   };
 
   const toggleSuiteAll = (testcases: any[]) => {
@@ -369,6 +404,14 @@ export default function TestPlansPage() {
                           : <RotateCcw className="w-3.5 h-3.5" />}
                       </button>
                       <button
+                        className="p-1.5 rounded-lg transition-colors hover:bg-blue-500/10 hover:text-blue-400"
+                        style={{ color: 'var(--text-muted)' }}
+                        onClick={() => openTcOrder(plan)}
+                        title="Reordenar casos de teste"
+                      >
+                        <ListOrdered className="w-3.5 h-3.5" />
+                      </button>
+                      <button
                         className="p-1.5 rounded-lg transition-colors"
                         style={{ color: 'var(--text-muted)' }}
                         onClick={() => setExpandedPlan(isExpanded ? null : plan.id)}
@@ -461,6 +504,56 @@ export default function TestPlansPage() {
           })}
         </div>
       )}
+      {/* TC Reorder Modal */}
+      {showTcOrder && (() => {
+        const plan = plans.find(p => p.id === showTcOrder);
+        if (!plan) return null;
+        const tcMeta: Record<string, string> = {};
+        (plan.tc_titles || []).forEach((t: any) => { if (t.id) tcMeta[t.id] = t.title; });
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowTcOrder(null)}>
+            <div className="card p-5 w-full max-w-md mx-4 space-y-4" style={{ background: 'var(--surface-2)' }} onClick={e => e.stopPropagation()}>
+              <div>
+                <h3 className="text-sm font-bold" style={{ color: 'var(--text)' }}>Reordenar Casos de Teste</h3>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{plan.name} · arraste para reordenar</p>
+              </div>
+              <div className="space-y-1 max-h-72 overflow-y-auto">
+                {orderedTcIds.map((tcId, i) => (
+                  <div
+                    key={tcId}
+                    draggable
+                    onDragStart={() => handleDragStart(i)}
+                    onDragOver={e => handleDragOver(e, i)}
+                    onDrop={() => handleDrop(i)}
+                    onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-grab select-none transition-all ${
+                      dragIdx === i ? 'opacity-40' : dragOverIdx === i ? 'ring-1 ring-blue-400' : ''
+                    }`}
+                    style={{ background: 'var(--surface-3)' }}
+                  >
+                    <GripVertical className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+                    <span className="text-xs flex-1 truncate" style={{ color: 'var(--text)' }}>
+                      {tcMeta[tcId] || tcId.slice(0, 8)}
+                    </span>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>#{i + 1}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  className="btn-primary flex-1 text-sm flex items-center gap-2 justify-center"
+                  disabled={updatePlan.isPending}
+                  onClick={() => updatePlan.mutate({ id: showTcOrder, test_case_ids: orderedTcIds })}
+                >
+                  {updatePlan.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ListOrdered className="w-3.5 h-3.5" />}
+                  Salvar Ordem
+                </button>
+                <button className="btn-ghost text-sm" onClick={() => setShowTcOrder(null)}>Cancelar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
