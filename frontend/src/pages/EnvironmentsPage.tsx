@@ -225,9 +225,6 @@ export default function EnvironmentsPage() {
           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Crie ambientes para separar variáveis de dev, staging e produção
           </p>
-          <button className="btn-primary mt-4 text-sm flex items-center gap-2 mx-auto" onClick={() => setShowForm(true)}>
-            <Plus className="w-4 h-4" /> Criar primeiro ambiente
-          </button>
         </div>
       ) : (
         <div className="space-y-3">

@@ -61,7 +61,7 @@ export default function TestPlansPage() {
     queryKey: ['all-testcases-for-plan', projectId, suites.map(s => s.id).join(',')],
     queryFn: async () => {
       const results = await Promise.all(suites.map(s => testcasesApi.list(s.id)));
-      return suites.map((s, i) => ({ suite: s, testcases: results[i]?.data?.testcases || [] }));
+      return suites.map((s, i) => ({ suite: s, testcases: results[i]?.data?.test_cases || [] }));
     },
     enabled: showForm && suites.length > 0,
   });

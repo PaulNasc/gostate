@@ -91,54 +91,54 @@ export default function ProjectMembersPage() {
       {/* Invite form */}
       {showForm && isAdmin && (
         <div className="card p-4 space-y-3">
-          <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Convidar membro</p>
-          <div className="flex items-center gap-2">
-            <input
-              className="input flex-1 text-sm"
-              placeholder="E-mail do usuário"
-              type="email"
-              value={email}
-              autoFocus
-              onChange={e => setEmail(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && email.trim()) add.mutate(); }}
-            />
-            <select
-              className="input text-sm py-2"
-              value={role}
-              onChange={e => setRole(e.target.value as any)}
-            >
-              {ROLES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
-            </select>
-            <button
-              className="btn-primary flex items-center gap-1.5 text-sm"
-              disabled={!email.trim() || add.isPending}
-              onClick={() => add.mutate()}
-            >
-              {add.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-              Convidar
-            </button>
-            <button className="btn-ghost p-2" onClick={() => { setShowForm(false); setEmail(''); }}>
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Convidar membro</p>
+            <button className="btn-ghost p-1.5" onClick={() => { setShowForm(false); setEmail(''); setRole('viewer'); }}>
               <X className="w-4 h-4" />
             </button>
           </div>
-          <div className="flex gap-2">
-            {ROLES.map(r => {
-              const Icon = r.icon;
-              return (
-                <button
-                  key={r.value}
-                  onClick={() => setRole(r.value)}
-                  className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${r.value === role ? `${r.bg} ${r.color}` : 'border-transparent'}`}
-                  style={r.value !== role ? { color: 'var(--text-muted)', borderColor: 'var(--border)' } : {}}
-                >
-                  <Icon className="w-3 h-3" /> {r.label}
-                  {r.value === 'viewer' && <span className="ml-1 opacity-60">— leitura</span>}
-                  {r.value === 'editor' && <span className="ml-1 opacity-60">— criar/editar TCs</span>}
-                  {r.value === 'admin' && <span className="ml-1 opacity-60">— gerenciar membros</span>}
-                </button>
-              );
-            })}
+          <input
+            className="input w-full text-sm"
+            placeholder="E-mail do usuário cadastrado"
+            type="email"
+            value={email}
+            autoFocus
+            onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && email.trim()) add.mutate(); }}
+          />
+          <div>
+            <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Nível de acesso</p>
+            <div className="flex gap-2 flex-wrap">
+              {ROLES.map(r => {
+                const Icon = r.icon;
+                return (
+                  <button
+                    key={r.value}
+                    onClick={() => setRole(r.value)}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${r.value === role ? `${r.bg} ${r.color}` : ''}`}
+                    style={r.value !== role ? { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'transparent' } : {}}
+                  >
+                    <Icon className="w-3 h-3" />
+                    <span className="font-medium">{r.label}</span>
+                    <span className="opacity-60">
+                      {r.value === 'viewer' ? '— leitura' : r.value === 'editor' ? '— editar TCs' : '— acesso total'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
+          {add.isError && (
+            <p className="text-xs text-red-400">{(add.error as any)?.response?.data?.error || 'Erro ao convidar'}</p>
+          )}
+          <button
+            className="btn-primary flex items-center gap-1.5 text-sm"
+            disabled={!email.trim() || add.isPending}
+            onClick={() => add.mutate()}
+          >
+            {add.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            Convidar
+          </button>
         </div>
       )}
 
@@ -226,21 +226,6 @@ export default function ProjectMembersPage() {
         </div>
       )}
 
-      {/* Role legend */}
-      <div className="flex flex-wrap gap-3 pt-2">
-        {ROLES.map(r => {
-          const Icon = r.icon;
-          return (
-            <div key={r.value} className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border ${r.bg} ${r.color}`}>
-              <Icon className="w-3 h-3" />
-              <span className="font-medium">{r.label}</span>
-              <span className="opacity-60">
-                {r.value === 'viewer' ? '— somente leitura' : r.value === 'editor' ? '— criar e editar' : '— acesso total'}
-              </span>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }
