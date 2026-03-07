@@ -108,15 +108,17 @@ router.post('/:id/test', requireRole('admin'), async (req: any, res) => {
   }
 });
 
-export function buildPayload(type: string, data: { status: string; title: string; project: string; duration_ms: number }) {
+export function buildPayload(type: string, data: { status: string; title: string; project: string; duration_ms: number; from_schedule?: boolean }) {
   const emoji = data.status === 'passed' ? '✅' : data.status === 'failed' ? '❌' : '⚠️';
   const color = data.status === 'passed' ? 3066993 : data.status === 'failed' ? 15158332 : 15844367;
+  const scheduleTag = data.from_schedule ? ' `⏰ agendamento`' : '';
+  const scheduleSuffix = data.from_schedule ? ' | **Origem:** ⏰ Agendamento' : '';
 
   if (type === 'discord') {
     return {
       embeds: [{
-        title: `${emoji} ${data.title}`,
-        description: `**Projeto:** ${data.project}\n**Status:** ${data.status}\n**Duração:** ${(data.duration_ms / 1000).toFixed(1)}s`,
+        title: `${emoji} ${data.title}${scheduleTag}`,
+        description: `**Projeto:** ${data.project}\n**Status:** ${data.status}\n**Duração:** ${(data.duration_ms / 1000).toFixed(1)}s${scheduleSuffix}`,
         color,
         footer: { text: 'goState Test Automation' },
         timestamp: new Date().toISOString(),
@@ -126,15 +128,15 @@ export function buildPayload(type: string, data: { status: string; title: string
 
   if (type === 'slack') {
     return {
-      text: `${emoji} *${data.title}* — ${data.status}`,
+      text: `${emoji} *${data.title}* — ${data.status}${data.from_schedule ? ' _(agendamento)_' : ''}`,
       blocks: [{
         type: 'section',
-        text: { type: 'mrkdwn', text: `${emoji} *${data.title}*\n*Projeto:* ${data.project} | *Status:* ${data.status} | *Duração:* ${(data.duration_ms / 1000).toFixed(1)}s` },
+        text: { type: 'mrkdwn', text: `${emoji} *${data.title}*\n*Projeto:* ${data.project} | *Status:* ${data.status} | *Duração:* ${(data.duration_ms / 1000).toFixed(1)}s${data.from_schedule ? ' | _⏰ agendamento_' : ''}` },
       }],
     };
   }
 
-  return { text: `${emoji} ${data.title} — ${data.status} (${data.project})` };
+  return { text: `${emoji} ${data.title} — ${data.status} (${data.project})${data.from_schedule ? ' [agendamento]' : ''}` };
 }
 
 export default router;

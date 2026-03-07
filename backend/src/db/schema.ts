@@ -378,6 +378,12 @@ function runMigrations(db: Database.Database): void {
   };
   migrations.push(v10);
 
+  const v11: any = {
+    version: 11,
+    sql: `ALTER TABLE executions ADD COLUMN schedule_id TEXT REFERENCES schedules(id) ON DELETE SET NULL;`
+  };
+  migrations.push(v11);
+
   for (const migration of migrations) {
     if (!applied.includes(migration.version)) {
       db.exec(migration.sql);

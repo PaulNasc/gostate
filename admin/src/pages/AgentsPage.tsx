@@ -51,7 +51,7 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
   const qc = useQueryClient();
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [env, setEnv] = useState<EnvType | null>(null);
-  const [backendUrl, setBackendUrl] = useState('');
+  const [backendUrl, setBackendUrl] = useState('http://host.docker.internal:4000');
   const [commands, setCommands] = useState<InstallCommands | null>(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -163,7 +163,7 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
                   value={backendUrl}
                   onChange={e => setBackendUrl(e.target.value)}
                 />
-                <p className="text-xs text-slate-600 mt-1">Deixe em branco para usar <code className="text-violet-400">http://localhost:4000</code> (apenas para agentes locais)</p>
+                <p className="text-xs text-slate-600 mt-1">Use <code className="text-violet-400">http://host.docker.internal:4000</code> para Docker ou a URL pública do backend para cloud</p>
               </div>
             </div>
           )}

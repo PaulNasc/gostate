@@ -72,9 +72,9 @@ function runDueSchedules() {
           executionIds.push(execId);
 
           db.prepare(`
-            INSERT INTO executions (id, test_plan_id, test_case_id, agent_id, triggered_by, status, video_enabled, browsers, created_at)
-            VALUES (?, ?, ?, ?, ?, 'queued', 0, ?, ?)
-          `).run(execId, plan.id, tcId, agent.id, adminUser.id, browsersJson, now);
+            INSERT INTO executions (id, test_plan_id, test_case_id, agent_id, triggered_by, status, video_enabled, browsers, created_at, schedule_id)
+            VALUES (?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)
+          `).run(execId, plan.id, tcId, agent.id, adminUser.id, browsersJson, now, sched.id);
 
           db.prepare("UPDATE agents SET status = 'busy' WHERE id = ?").run(agent.id);
 
@@ -105,9 +105,9 @@ function runDueSchedules() {
 
     const dispatchSingle = db.transaction(() => {
       db.prepare(`
-        INSERT INTO executions (id, test_case_id, agent_id, triggered_by, status, video_enabled, browsers, created_at)
-        VALUES (?, ?, ?, ?, 'queued', 0, ?, ?)
-      `).run(id, sched.test_case_id || null, agent.id, adminUser.id, browsersJson, now);
+        INSERT INTO executions (id, test_case_id, agent_id, triggered_by, status, video_enabled, browsers, created_at, schedule_id)
+        VALUES (?, ?, ?, ?, 'queued', 0, ?, ?, ?)
+      `).run(id, sched.test_case_id || null, agent.id, adminUser.id, browsersJson, now, sched.id);
 
       db.prepare('UPDATE schedules SET last_run = ? WHERE id = ?').run(now, sched.id);
       db.prepare("UPDATE agents SET status = 'busy' WHERE id = ?").run(agent.id);

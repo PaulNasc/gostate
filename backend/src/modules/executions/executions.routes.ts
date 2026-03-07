@@ -252,13 +252,13 @@ router.patch('/:id/status', authenticateAgentOrUser, (req: Request, res: Respons
   else io.emit('exec:update', updated);
 
   if (finished) {
-    fireWebhooks(db, status, updated).catch(() => {});
+    fireWebhooks(db, status, updated, !!updated.schedule_id).catch(() => {});
   }
 
   res.json({ execution: updated });
 });
 
-async function fireWebhooks(db: any, status: string, exec: any) {
+async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = false) {
   const eventMap: Record<string, string> = {
     passed: 'execution.passed',
     failed: 'execution.failed',
@@ -282,6 +282,7 @@ async function fireWebhooks(db: any, status: string, exec: any) {
         title: exec.tc_title || `Execução #${exec.id.slice(0, 8)}`,
         project: exec.project_name || '—',
         duration_ms: exec.duration_ms || 0,
+        from_schedule: fromSchedule,
       });
 
       await fetch(intg.webhook_url, {
