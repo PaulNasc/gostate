@@ -3,10 +3,12 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      AGENT_TOKEN: cd8a28f3-e635-4b14-938a-97eaf7b543a4-e2fd02f1-c5c6-4482-8170-d9b9e1238c3b
+      AGENT_TOKEN: 7bffb728-7bdb-49f5-9468-30bf6fea35f5-b61a63b7-c908-455d-bf14-780349bbfc56
       BACKEND_URL: http://host.docker.internal:4000
       NODE_ENV: production
 
       AGENT_MAX_CONCURRENT: 3
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+      
