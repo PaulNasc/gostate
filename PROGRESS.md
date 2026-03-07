@@ -34,16 +34,20 @@
 | 26 | SchedulerPage: toast nos CRUD de agendamentos | baixa |
 | 27 | IntegrationsPage: toast nos CRUD de integrações | baixa |
 
+| 28 | ReportsPage: exportar relatório como Excel (.xlsx) e PDF (.pdf) | média |
+| 29 | TestPlansPage: re-executar plano falho (retryPlan — só TCs que falharam) | alta |
+| 30 | ProjectDetailPage: mover TC entre suites (backend PATCH /move + dropdown hover) | média |
+| 32 | AgentsPage: capabilities badges (browsers, frameworks, max_concurrent) | média |
+| 33 | DashboardPage: widget flakiness top-5 TCs mais instáveis (score de switches) | média |
+| 34 | Admin: guia "Como conectar agente" (DeployPanel no admin/AgentsPage) | alta |
+| 35 | SchedulerPage: agendamento de TestPlan — modo TC/Plano + backend test_plan_id | alta |
+
 ## ⏳ Pendente — Próximas Fases
 
 | # | Feature | Prioridade |
 |---|---------|-----------|
-| 28 | ReportsPage: exportar relatório como PDF/CSV | média |
-| 29 | TestPlansPage: re-executar plano falho (só os TCs que falharam) | alta |
-| 30 | ProjectDetailPage: mover/copiar TC entre suites | média |
 | 31 | ExecutionsPage: comparar duas execuções lado a lado | baixa |
-| 32 | AgentsPage: capabilities por agente (browsers suportados declarados) | média |
-| 33 | DashboardPage: widget de flakiness top-5 TCs mais instáveis | média |
-| 34 | Admin: guia "Como conectar agente" no painel Admin | alta |
-| 35 | SchedulerPage: agendamento de TestPlan (além de TC individual) | alta |
 | 36 | Backend: API de auditoria — log de ações por usuário | baixa |
+| 37 | ProjectDetailPage: copiar TC (duplicar dentro do projeto) | baixa |
+| 38 | SchedulerPage: edição inline de agendamento existente | baixa |
+| 39 | TestPlansPage: reordenar TCs dentro do plano (drag-drop) | baixa |
