@@ -393,6 +393,19 @@ function runMigrations(db: Database.Database): void {
   };
   migrations.push(v12);
 
+  // v13: fix integrations.events stored as space-separated string instead of JSON array
+  const v13: any = { version: 13, sql: `SELECT 1` }; // no-op SQL, logic runs below
+  if (!applied.includes(13)) {
+    const badRows = db.prepare(`SELECT id, events FROM integrations WHERE events NOT LIKE '[%'`).all() as any[];
+    for (const row of badRows) {
+      const parts = (row.events || '').trim().split(/\s+/).filter(Boolean);
+      const fixed = JSON.stringify(parts);
+      db.prepare('UPDATE integrations SET events = ? WHERE id = ?').run(fixed, row.id);
+    }
+    db.prepare('INSERT INTO migrations (version) VALUES (?)').run(13);
+    console.log(`[DB] Migration v13 applied — fixed ${badRows.length} integration(s) with malformed events`);
+  }
+
   for (const migration of migrations) {
     if (!applied.includes(migration.version)) {
       db.exec(migration.sql);

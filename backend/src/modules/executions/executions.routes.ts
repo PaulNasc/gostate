@@ -285,7 +285,15 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
   }
 
   for (const intg of integrations) {
-    const events: string[] = JSON.parse(intg.events || '[]');
+    const events: string[] = (() => {
+      try {
+        const parsed = JSON.parse(intg.events || '[]');
+        if (Array.isArray(parsed)) return parsed;
+        return (intg.events || '').trim().split(/\s+/).filter(Boolean);
+      } catch {
+        return (intg.events || '').trim().split(/\s+/).filter(Boolean);
+      }
+    })();
     if (!events.includes(event)) continue;
 
     const flags = (() => { try { return JSON.parse(intg.include_flags || '{}'); } catch { return {}; } })();
