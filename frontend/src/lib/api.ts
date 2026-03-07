@@ -60,6 +60,7 @@ export const testcasesApi = {
   remove: (suiteId: string, tcId: string) => api.delete(`/api/suites/${suiteId}/testcases/${tcId}`),
   versions: (suiteId: string, tcId: string) => api.get(`/api/suites/${suiteId}/testcases/${tcId}/versions`),
   move: (suiteId: string, tcId: string, targetSuiteId: string) => api.patch(`/api/suites/${suiteId}/testcases/${tcId}/move`, { target_suite_id: targetSuiteId }),
+  duplicate: (suiteId: string, tcId: string, targetSuiteId?: string) => api.post(`/api/suites/${suiteId}/testcases/${tcId}/duplicate`, targetSuiteId ? { target_suite_id: targetSuiteId } : {}),
 };
 
 export const scriptsApi = {

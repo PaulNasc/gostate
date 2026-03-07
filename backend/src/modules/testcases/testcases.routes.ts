@@ -96,6 +96,27 @@ router.delete('/:tcId', (req: AuthRequest, res: Response) => {
   res.json({ message: 'Caso de teste excluído com sucesso' });
 });
 
+router.post('/:tcId/duplicate', (req: AuthRequest, res: Response) => {
+  const db = getDb();
+  const tc = db.prepare('SELECT * FROM test_cases WHERE id = ? AND suite_id = ?').get(req.params.tcId, req.params.suiteId) as any;
+  if (!tc) { res.status(404).json({ error: 'Caso de teste não encontrado' }); return; }
+  const newId = uuidv4();
+  const now = new Date().toISOString();
+  const { target_suite_id } = req.body;
+  const destSuiteId = target_suite_id || req.params.suiteId;
+  if (target_suite_id) {
+    const dest = db.prepare('SELECT * FROM suites WHERE id = ?').get(target_suite_id) as any;
+    if (!dest) { res.status(404).json({ error: 'Suite de destino não encontrada' }); return; }
+  }
+  db.prepare(`
+    INSERT INTO test_cases (id, suite_id, title, description, steps, tags, priority, status, type, created_by, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(newId, destSuiteId, `${tc.title} (cópia)`, tc.description, tc.steps, tc.tags, tc.priority, tc.status, tc.type, req.user!.id, now, now);
+  saveVersion(db, newId, 1, JSON.parse(tc.steps || '[]'), 'Duplicado de ' + tc.title, req.user!.id);
+  const created = db.prepare('SELECT * FROM test_cases WHERE id = ?').get(newId);
+  res.status(201).json({ test_case: parseTC(created) });
+});
+
 router.patch('/:tcId/move', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const tc = db.prepare('SELECT * FROM test_cases WHERE id = ? AND suite_id = ?').get(req.params.tcId, req.params.suiteId) as any;

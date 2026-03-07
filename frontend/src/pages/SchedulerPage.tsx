@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { schedulesApi, projectsApi, agentsApi, environmentsApi, testPlansApi } from '../lib/api';
 import { formatDate } from '../lib/utils';
-import { Plus, Clock, Trash2, Loader2, ToggleLeft, ToggleRight, CalendarClock, PlayCircle, ChevronRight } from 'lucide-react';
+import { Plus, Clock, Trash2, Loader2, ToggleLeft, ToggleRight, CalendarClock, PlayCircle, ChevronRight, Pencil, Check, X } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
 const CRON_PRESETS = [
@@ -54,6 +54,9 @@ export default function SchedulerPage() {
   const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [customCron, setCustomCron] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+  const [editCron, setEditCron] = useState('');
   const [form, setForm] = useState({
     label: '',
     mode: 'tc' as 'tc' | 'plan',
@@ -121,6 +124,21 @@ export default function SchedulerPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['schedules'] }); toast.success('Agendamento removido'); },
     onError: () => toast.error('Erro ao remover agendamento'),
   });
+
+  const updateSchedule = useMutation({
+    mutationFn: ({ id, label, cron }: { id: string; label: string; cron: string }) =>
+      schedulesApi.update(id, { label, cron }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['schedules'] });
+      setEditingId(null);
+      toast.success('Agendamento atualizado');
+    },
+    onError: () => toast.error('Erro ao atualizar agendamento'),
+  });
+
+  const startEdit = (s: any) => { setEditingId(s.id); setEditLabel(s.label); setEditCron(s.cron); };
+  const cancelEdit = () => setEditingId(null);
+  const commitEdit = (id: string) => { if (editLabel.trim() && editCron.trim()) updateSchedule.mutate({ id, label: editLabel.trim(), cron: editCron.trim() }); };
 
   return (
     <div className="p-6 space-y-6">
@@ -296,10 +314,20 @@ export default function SchedulerPage() {
               {schedules.map((s) => (
                 <tr key={s.id} className="border-b transition-colors group" onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')} style={{ borderColor: 'var(--border)' }}>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Clock className={`w-3.5 h-3.5 flex-shrink-0 ${s.enabled ? 'text-green-400' : 'text-slate-600'}`} />
-                      <span className="font-medium" style={{ color: 'var(--text)' }}>{s.label}</span>
-                    </div>
+                    {editingId === s.id ? (
+                      <input
+                        className="input text-sm py-1 w-full"
+                        value={editLabel}
+                        autoFocus
+                        onChange={e => setEditLabel(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') commitEdit(s.id); if (e.key === 'Escape') cancelEdit(); }}
+                      />
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <Clock className={`w-3.5 h-3.5 flex-shrink-0 ${s.enabled ? 'text-green-400' : 'text-slate-600'}`} />
+                        <span className="font-medium" style={{ color: 'var(--text)' }}>{s.label}</span>
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-sm max-w-[160px] truncate" style={{ color: 'var(--text-muted)' }}>
                     {s.plan_name ? (
@@ -310,10 +338,20 @@ export default function SchedulerPage() {
                     ) : (s.project_name || s.tc_title || '—')}
                   </td>
                   <td className="px-4 py-3">
-                    <div>
-                      <span className="text-xs" style={{ color: 'var(--text)' }}>{cronLabel(s.cron)}</span>
-                      <code className="block text-xs font-mono mt-0.5" style={{ color: 'var(--text-muted)' }}>{s.cron}</code>
-                    </div>
+                    {editingId === s.id ? (
+                      <input
+                        className="input text-xs font-mono py-1 w-full"
+                        value={editCron}
+                        onChange={e => setEditCron(e.target.value)}
+                        placeholder="* * * * *"
+                        onKeyDown={e => { if (e.key === 'Enter') commitEdit(s.id); if (e.key === 'Escape') cancelEdit(); }}
+                      />
+                    ) : (
+                      <div>
+                        <span className="text-xs" style={{ color: 'var(--text)' }}>{cronLabel(s.cron)}</span>
+                        <code className="block text-xs font-mono mt-0.5" style={{ color: 'var(--text-muted)' }}>{s.cron}</code>
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>
                     {s.last_run ? formatDate(s.last_run) : <span style={{ color: 'var(--text-muted)', opacity: 0.5 }}>Nunca executou</span>}
@@ -338,13 +376,43 @@ export default function SchedulerPage() {
                     </button>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 transition-all" style={{ color: 'var(--text-muted)' }}
-                      onClick={() => { if (confirm(`Remover "${s.label}"?`)) remove.mutate(s.id); }}
-                      title="Remover agendamento"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      {editingId === s.id ? (
+                        <>
+                          <button
+                            className="p-1.5 rounded hover:bg-green-500/10 text-green-400 transition-all"
+                            onClick={() => commitEdit(s.id)}
+                            title="Salvar"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            className="p-1.5 rounded hover:bg-slate-500/10 transition-all" style={{ color: 'var(--text-muted)' }}
+                            onClick={cancelEdit}
+                            title="Cancelar"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-blue-500/10 hover:text-blue-400 transition-all" style={{ color: 'var(--text-muted)' }}
+                            onClick={() => startEdit(s)}
+                            title="Editar agendamento"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 transition-all" style={{ color: 'var(--text-muted)' }}
+                            onClick={() => { if (confirm(`Remover "${s.label}"?`)) remove.mutate(s.id); }}
+                            title="Remover agendamento"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

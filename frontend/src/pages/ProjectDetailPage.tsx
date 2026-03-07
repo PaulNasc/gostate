@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, suitesApi, testcasesApi, executionsApi, agentsApi, environmentsApi } from '../lib/api';
 import { formatDate, statusBadgeClass, statusLabel } from '../lib/utils';
-import { ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, TestTube2, Loader2, FolderOpen, Play, Pencil, PlayCircle, ClipboardList, Layers, Users, Tag, Search, X, ArrowRightLeft } from 'lucide-react';
+import { ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, TestTube2, Loader2, FolderOpen, Play, Pencil, PlayCircle, ClipboardList, Layers, Users, Tag, Search, X, ArrowRightLeft, Copy } from 'lucide-react';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -52,6 +52,15 @@ export default function ProjectDetailPage() {
     onSuccess: (_r, vars) => {
       qc.invalidateQueries({ queryKey: ['testcases', vars.suiteId] });
       qc.invalidateQueries({ queryKey: ['testcases', vars.targetSuiteId] });
+      qc.invalidateQueries({ queryKey: ['suites', projectId] });
+    },
+  });
+
+  const duplicateTc = useMutation({
+    mutationFn: ({ suiteId, tcId, targetSuiteId }: { suiteId: string; tcId: string; targetSuiteId?: string }) =>
+      testcasesApi.duplicate(suiteId, tcId, targetSuiteId),
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ['testcases', vars.targetSuiteId || vars.suiteId] });
       qc.invalidateQueries({ queryKey: ['suites', projectId] });
     },
   });
@@ -167,6 +176,7 @@ export default function ProjectDetailPage() {
               onCreateTc={() => createTc.mutate(suite.id)}
               onDeleteTc={(tcId: string) => { if (confirm('Excluir caso de teste?')) deleteTc.mutate({ suiteId: suite.id, tcId }); }}
               onMoveTc={(tcId: string, targetSuiteId: string) => moveTc.mutate({ suiteId: suite.id, tcId, targetSuiteId })}
+              onDuplicateTc={(tcId: string, targetSuiteId?: string) => duplicateTc.mutate({ suiteId: suite.id, tcId, targetSuiteId })}
               otherSuites={suites.filter(s => s.id !== suite.id)}
               onRename={(id: string, name: string) => updateSuite.mutate({ id, name })}
               onRunTc={(tcId: string, title: string) => setRunModal({ tcId, title })}
@@ -397,7 +407,7 @@ function RunSuiteModal({ suiteId, suiteName, onClose }: { suiteId: string; suite
   );
 }
 
-function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onShowTcForm, tcTitle, onTcTitle, onCreateTc, onDeleteTc, onMoveTc, otherSuites, onRunTc, onRunSuite, onEditTc, creating, tagFilter, searchFilter }: any) {
+function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onShowTcForm, tcTitle, onTcTitle, onCreateTc, onDeleteTc, onMoveTc, onDuplicateTc, otherSuites, onRunTc, onRunSuite, onEditTc, creating, tagFilter, searchFilter }: any) {
   const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ['testcases', suite.id],
@@ -527,6 +537,14 @@ function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onSh
                 </button>
                 <button className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-green-500/10 hover:text-green-400 transition-all" style={{ color: 'var(--text-muted)' }} title="Executar" onClick={() => onRunTc(tc.id, tc.title)}>
                   <Play className="w-3 h-3" />
+                </button>
+                <button
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-cyan-500/10 hover:text-cyan-400 transition-all"
+                  style={{ color: 'var(--text-muted)' }}
+                  title="Duplicar caso de teste"
+                  onClick={() => onDuplicateTc(tc.id)}
+                >
+                  <Copy className="w-3 h-3" />
                 </button>
                 {otherSuites.length > 0 && (
                   <div className="relative group/move">
