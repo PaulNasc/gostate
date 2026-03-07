@@ -130,13 +130,47 @@ router.post('/:id/test', requireRole('admin'), async (req: any, res) => {
   const integration = db.prepare('SELECT * FROM integrations WHERE id = ?').get(id) as any;
   if (!integration) return res.status(404).json({ error: 'Integração não encontrada' });
 
+  const flags = (() => { try { return JSON.parse(integration.include_flags || '{}'); } catch { return {}; } })();
+
+  // Sample steps used when flags.steps or flags.detailed_report are enabled
+  const sampleSteps = [
+    { name: 'Abrir página de login', status: 'passed', duration_ms: 312 },
+    { name: 'Preencher email', status: 'passed', duration_ms: 45 },
+    { name: 'Preencher senha', status: 'passed', duration_ms: 38 },
+    { name: 'Clicar em Entrar', status: 'passed', duration_ms: 890 },
+    { name: 'Verificar redirecionamento para /dashboard', status: 'passed', duration_ms: 210 },
+    { name: 'Verificar título da página', status: 'failed', duration_ms: 55, error_message: 'Expected "Dashboard" but got "Painel"' },
+  ];
+
+  const data: Parameters<typeof buildPayload>[1] = {
+    status: 'failed',
+    title: 'Login com credenciais válidas [TEST]',
+    project: integration.project_id
+      ? (db.prepare('SELECT name FROM projects WHERE id = ?').get(integration.project_id) as any)?.name || 'Projeto'
+      : 'Demo',
+    duration_ms: 1550,
+    from_schedule: false,
+  };
+
+  if (flags.steps) {
+    data.steps = sampleSteps;
+  }
+
+  if (flags.detailed_report) {
+    data.detailed_report = {
+      total_steps: sampleSteps.length,
+      passed_steps: sampleSteps.filter(s => s.status === 'passed').length,
+      failed_steps: sampleSteps.filter(s => s.status === 'failed').length,
+      skipped_steps: 0,
+    };
+  }
+
+  if (flags.artifacts) {
+    data.artifacts = ['video-login-test.mp4', 'screenshot-step-6-fail.png'];
+  }
+
   try {
-    const payload = buildPayload(integration.type, {
-      status: 'passed',
-      title: 'Teste de integração goState',
-      project: 'Demo',
-      duration_ms: 1234,
-    });
+    const payload = buildPayload(integration.type, data);
 
     const resp = await fetch(integration.webhook_url, {
       method: 'POST',
