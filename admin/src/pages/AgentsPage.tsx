@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bot, Plus, Trash2, RefreshCw, Copy, CheckCircle2, Loader2, Wifi, WifiOff, KeyRound, AlertTriangle, Settings2, Terminal, Activity } from 'lucide-react';
+import { Bot, Plus, Trash2, RefreshCw, Copy, CheckCircle2, Loader2, Wifi, WifiOff, KeyRound, AlertTriangle, Settings2, Terminal, Activity, Cloud, Monitor, Server, Package, ChevronRight, ChevronLeft, Rocket, X } from 'lucide-react';
 import { agentsApi } from '../api';
 
 function formatDate(d: string | null | undefined) {
@@ -36,6 +36,220 @@ type InstallCommands = {
   npm_bash: string;
   docker_compose: string;
 };
+
+type EnvType = 'docker-linux' | 'docker-windows' | 'npm-linux' | 'npm-windows' | 'compose';
+
+const ENV_OPTIONS: { id: EnvType; icon: React.ReactNode; title: string; subtitle: string; cmd: keyof InstallCommands }[] = [
+  { id: 'docker-linux',   icon: <Server  className="w-5 h-5" />, title: 'Docker — Linux / VPS / Cloud', subtitle: 'Ubuntu, Debian, EC2, DigitalOcean, Railway, Render…', cmd: 'docker_bash' },
+  { id: 'docker-windows', icon: <Monitor className="w-5 h-5" />, title: 'Docker — Windows',              subtitle: 'Docker Desktop no Windows + PowerShell',          cmd: 'docker_powershell' },
+  { id: 'compose',        icon: <Package className="w-5 h-5" />, title: 'Docker Compose',                subtitle: 'Salve como docker-compose.yml e rode up -d',     cmd: 'docker_compose' },
+  { id: 'npm-linux',      icon: <Terminal className="w-5 h-5" />, title: 'NPM direto — Linux / Mac',      subtitle: 'Node.js já instalado, sem Docker',               cmd: 'npm_bash' },
+  { id: 'npm-windows',    icon: <Terminal className="w-5 h-5" />, title: 'NPM direto — Windows',          subtitle: 'Node.js já instalado, PowerShell',               cmd: 'npm_powershell' },
+];
+
+function DeployWizard({ agent, token, onClose }: { agent: any; token: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [env, setEnv] = useState<EnvType | null>(null);
+  const [backendUrl, setBackendUrl] = useState('');
+  const [commands, setCommands] = useState<InstallCommands | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [tokenCopied, setTokenCopied] = useState(false);
+
+  const copy = (text: string, setter: (v: boolean) => void) => {
+    navigator.clipboard.writeText(text).then(() => { setter(true); setTimeout(() => setter(false), 2000); });
+  };
+
+  const generate = async () => {
+    if (!env) return;
+    setLoading(true);
+    try {
+      await agentsApi.saveDeployConfig(agent.id, { backend_url: backendUrl, docker_image: 'node:20-slim', node_env: 'production', extra_env: '', notes: '' });
+      const res = await agentsApi.getInstallCommand(agent.id);
+      setCommands(res.data.commands);
+      qc.invalidateQueries({ queryKey: ['admin-agents'] });
+      setStep(3);
+    } catch { /* ignore */ }
+    finally { setLoading(false); }
+  };
+
+  const selectedEnv = ENV_OPTIONS.find(e => e.id === env);
+  const currentCmd = commands && selectedEnv ? commands[selectedEnv.cmd] : '';
+  const isCompose = env === 'compose';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0d1117', border: '1px solid #2a3352', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: '#1e2a3a' }}>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'rgba(124,58,237,0.2)' }}>
+              <Rocket className="w-4 h-4 text-violet-400" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Conectar Agente: <span className="text-violet-300">{agent.name}</span></p>
+              <p className="text-xs text-slate-500">Passo {step} de 3</p>
+            </div>
+          </div>
+          <button className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-slate-400" onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+
+        {/* Progress bar */}
+        <div className="h-0.5" style={{ background: '#1e2a3a' }}>
+          <div className="h-full bg-violet-500 transition-all duration-300" style={{ width: `${(step / 3) * 100}%` }} />
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+          {/* Step 1: Token */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold text-white mb-1">1. Token do agente</h2>
+                <p className="text-xs text-slate-400">Guarde este token — ele autentica o agente com o backend. Não será exibido novamente.</p>
+              </div>
+              <div className="flex items-center gap-2 rounded-xl px-4 py-3 font-mono text-xs" style={{ background: '#0a0d14', border: '1px solid #2a3352' }}>
+                <span className="flex-1 text-violet-300 break-all select-all">{token}</span>
+                <button className="flex-shrink-0 p-1.5 rounded hover:bg-white/10 transition-colors" onClick={() => copy(token, setTokenCopied)} title="Copiar token">
+                  {tokenCopied ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4 text-slate-400" />}
+                </button>
+              </div>
+              <div className="flex items-start gap-2 rounded-lg px-3 py-2.5 text-xs" style={{ background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.2)' }}>
+                <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                <span className="text-yellow-200/70">Copie o token agora. Após fechar este wizard, você não poderá vê-lo novamente.</span>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Environment + backend URL */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold text-white mb-1">2. Onde vai rodar o agente?</h2>
+                <p className="text-xs text-slate-400">Escolha o ambiente de execução. O comando de instalação será gerado automaticamente.</p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                {ENV_OPTIONS.map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setEnv(opt.id)}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
+                      env === opt.id
+                        ? 'border-violet-500/60 bg-violet-500/10'
+                        : 'border-slate-700/60 hover:border-slate-600'
+                    }`}
+                    style={{ border: '1px solid' }}
+                  >
+                    <span className={env === opt.id ? 'text-violet-400' : 'text-slate-500'}>{opt.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${env === opt.id ? 'text-white' : 'text-slate-300'}`}>{opt.title}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{opt.subtitle}</p>
+                    </div>
+                    {env === opt.id && <CheckCircle2 className="w-4 h-4 text-violet-400 flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1.5">
+                  URL do Backend <span className="text-slate-600">(onde o agente vai enviar os resultados)</span>
+                </label>
+                <input
+                  className="input w-full"
+                  placeholder="http://192.168.1.10:4000  ou  https://meu-backend.railway.app"
+                  value={backendUrl}
+                  onChange={e => setBackendUrl(e.target.value)}
+                />
+                <p className="text-xs text-slate-600 mt-1">Deixe em branco para usar <code className="text-violet-400">http://localhost:4000</code> (apenas para agentes locais)</p>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Command */}
+          {step === 3 && commands && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold text-white mb-1">3. Execute no servidor</h2>
+                <p className="text-xs text-slate-400">
+                  Copie o comando abaixo e execute {isCompose ? 'salve como <code>docker-compose.yml</code> na pasta <code>agent/</code>' : 'no terminal do servidor'}, dentro da pasta <code className="text-violet-300">agent/</code> do projeto goState.
+                </p>
+              </div>
+
+              <div className="rounded-xl overflow-hidden" style={{ background: '#020409', border: '1px solid #2a3352' }}>
+                <div className="flex items-center justify-between px-4 py-2 border-b" style={{ borderColor: '#1e2a3a' }}>
+                  <span className="text-xs text-slate-500 font-mono">{selectedEnv?.title}</span>
+                  <button className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors" onClick={() => copy(currentCmd, setCopied)}>
+                    {copied ? <CheckCircle2 className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copied ? 'Copiado!' : 'Copiar'}
+                  </button>
+                </div>
+                <pre className="p-4 text-xs text-violet-200 font-mono overflow-x-auto whitespace-pre leading-relaxed" style={{ maxHeight: '220px' }}>{currentCmd}</pre>
+              </div>
+
+              <div className="space-y-2 text-xs text-slate-400 rounded-xl p-4" style={{ background: '#0a0f1a', border: '1px solid #1e2a3a' }}>
+                <p className="font-semibold text-slate-300">Próximos passos</p>
+                {!isCompose && (
+                  <p>1. Certifique-se que <span className="text-violet-300">{env?.startsWith('docker') ? 'Docker' : 'Node.js 18+'}</span> está instalado no servidor</p>
+                )}
+                {isCompose && <p>1. Salve o conteúdo como <code className="text-violet-300">docker-compose.yml</code> na pasta <code className="text-violet-300">agent/</code></p>}
+                <p>{isCompose ? '2' : '2'}. Execute o comando na pasta <code className="text-violet-300">agent/</code> do projeto</p>
+                <p>{isCompose ? '3' : '3'}. O agente vai aparecer como <span className="text-green-400">Online</span> em alguns segundos</p>
+                <p className="text-slate-600">O token já está incorporado no comando — zero configuração manual.</p>
+              </div>
+
+              <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs" style={{ background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                <Cloud className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
+                <span className="text-emerald-300/80">Para ambientes cloud (Railway, Render, Fly.io): use a opção Docker Linux e defina a URL do backend como a URL pública do seu backend goState.</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer nav */}
+        <div className="flex items-center justify-between px-6 py-4 border-t" style={{ borderColor: '#1e2a3a' }}>
+          <div>
+            {step > 1 && (
+              <button className="btn-ghost flex items-center gap-2 text-sm" onClick={() => setStep(s => (s - 1) as 1 | 2 | 3)}>
+                <ChevronLeft className="w-4 h-4" /> Voltar
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {step < 3 && (
+              <button
+                className="btn-ghost text-xs text-slate-500 hover:text-slate-300"
+                onClick={onClose}
+              >Fechar sem configurar</button>
+            )}
+            {step === 1 && (
+              <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => setStep(2)}>
+                Próximo <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+            {step === 2 && (
+              <button
+                className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50"
+                disabled={!env || loading}
+                onClick={generate}
+              >
+                {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Terminal className="w-4 h-4" />}
+                Gerar Comando
+              </button>
+            )}
+            {step === 3 && (
+              <button className="btn-primary flex items-center gap-2 text-sm" onClick={onClose}>
+                <CheckCircle2 className="w-4 h-4" /> Concluir
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function DeployPanel({ agent, onClose }: { agent: any; onClose: () => void }) {
   const qc = useQueryClient();
@@ -206,8 +420,7 @@ export default function AgentsPage() {
   const qc = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState('');
-  const [newToken, setNewToken] = useState<{ id: string; name: string; token: string } | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [wizard, setWizard] = useState<{ agent: any; token: string } | null>(null);
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
@@ -229,7 +442,7 @@ export default function AgentsPage() {
     onSuccess: async (res) => {
       const agent = res.data.agent;
       const tokenRes = await agentsApi.getToken(agent.id);
-      setNewToken({ id: agent.id, name: agent.name, token: tokenRes.data.token });
+      setWizard({ agent, token: tokenRes.data.token });
       setName('');
       setShowForm(false);
       qc.invalidateQueries({ queryKey: ['admin-agents'] });
@@ -258,15 +471,15 @@ export default function AgentsPage() {
     }
   };
 
-  const copyToken = (token: string) => {
-    navigator.clipboard.writeText(token).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-
   return (
     <div className="p-6 space-y-6 max-w-4xl">
+      {wizard && (
+        <DeployWizard
+          agent={wizard.agent}
+          token={wizard.token}
+          onClose={() => setWizard(null)}
+        />
+      )}
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-xl transition-all ${
@@ -295,7 +508,7 @@ export default function AgentsPage() {
       {showForm && (
         <div className="card p-4 space-y-3">
           <h3 className="text-sm font-semibold text-white">Registrar Novo Agente</h3>
-          <p className="text-xs text-slate-400">Após criar, copie o token e configure-o no agente com <code className="text-violet-400">AGENT_TOKEN=...</code></p>
+          <p className="text-xs text-slate-400">Após criar, um wizard vai guiar a instalação no servidor remoto.</p>
           <div className="flex gap-2">
             <input
               className="input flex-1"
@@ -310,27 +523,6 @@ export default function AgentsPage() {
             </button>
             <button className="btn-ghost" onClick={() => { setShowForm(false); setName(''); }}>Cancelar</button>
           </div>
-        </div>
-      )}
-
-      {/* Token display */}
-      {newToken && (
-        <div className="card p-4 space-y-3 border-violet-500/40">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-green-400" />
-            <h3 className="text-sm font-semibold text-white">Agente "{newToken.name}" criado com sucesso!</h3>
-          </div>
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 font-mono text-xs" style={{ background: '#0d1117', border: '1px solid #2a3352' }}>
-            <span className="flex-1 text-violet-300 break-all select-all">{newToken.token}</span>
-            <button className="btn-ghost p-1.5 flex-shrink-0" onClick={() => copyToken(newToken.token)} title="Copiar">
-              {copied ? <CheckCircle2 className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </div>
-          <div className="flex items-start gap-2 text-xs text-yellow-400/80">
-            <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-            <span>Guarde este token — ele não será exibido novamente. Configure o agente com: <code className="text-violet-300">AGENT_TOKEN={newToken.token}</code></span>
-          </div>
-          <button className="btn-ghost text-xs" onClick={() => setNewToken(null)}>Fechar</button>
         </div>
       )}
 
@@ -434,11 +626,11 @@ export default function AgentsPage() {
           <KeyRound className="w-4 h-4 text-violet-400 flex-shrink-0 mt-0.5" />
           <div className="text-xs text-slate-400 space-y-1">
             <p className="font-semibold text-slate-300">Fluxo de configuração</p>
-            <p>1. Crie um agente com <span className="text-violet-300">Novo Agente</span></p>
-            <p>2. Clique em <span className="text-violet-300">⚙ Configurar</span> no card do agente</p>
-            <p>3. Preencha a URL do backend e clique em <span className="text-violet-300">Gerar Comando de Instalação</span></p>
-            <p>4. Copie o comando gerado e execute no servidor onde o agente vai rodar</p>
-            <p className="text-slate-500">O token é incorporado automaticamente no comando — zero configuração manual no servidor.</p>
+            <p>1. Clique em <span className="text-violet-300">Novo Agente</span> — um wizard abre automaticamente</p>
+            <p>2. Copie o token, escolha o ambiente (Docker, NPM, VPS, Cloud) e informe a URL do backend</p>
+            <p>3. Copie o comando gerado e execute na pasta <code className="text-violet-300">agent/</code> do servidor</p>
+            <p>4. O agente aparece como <span className="text-green-400">Online</span> em segundos após executar</p>
+            <p className="text-slate-500">Para reconfigurar um agente existente, clique em <span className="text-violet-300">⚙ Configurar</span> no card.</p>
           </div>
         </div>
       </div>
