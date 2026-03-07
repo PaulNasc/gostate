@@ -113,7 +113,18 @@ async function runExecution(config: ExecConfig) {
   const execWorkDir = path.join(WORK_DIR, execId);
   fs.mkdirSync(execWorkDir, { recursive: true });
 
-  const apiBase = backendUrl || BACKEND_URL;
+  // Always prefer the env-level BACKEND_URL (set when container started) over the
+  // backendUrl embedded in the runConfig payload, which may carry 'localhost' and
+  // therefore be unreachable from inside Docker.
+  const apiBase = (() => {
+    const fromEnv = BACKEND_URL;
+    const fromPayload = backendUrl || '';
+    const isLocalhost = (u: string) =>
+      u.includes('localhost') || u.includes('127.0.0.1');
+    if (!isLocalhost(fromEnv)) return fromEnv;          // env is a real host — use it
+    if (!isLocalhost(fromPayload)) return fromPayload;   // payload has a real host — use it
+    return fromEnv;                                      // both localhost, nothing we can do
+  })();
 
   const stripAnsi = (s: string) => s.replace(/\x1B\[[0-9;]*[mGKHFABCDsuJnhliM]|\x1B\([A-Z]|\x1B=/g, '');
   const emitLog = (line: string) => {
@@ -145,12 +156,40 @@ test('smoke', async ({ page }) => {
       emitLog('[goState Agent] Nenhum script/steps fornecido — executando smoke test\n');
     }
 
-    const playwrightConfig = generatePlaywrightConfig(execWorkDir, config);
+    // Detect installed browsers before generating config
+    const browsersInstallPath = (() => {
+      const candidates = [
+        process.env.PLAYWRIGHT_BROWSERS_PATH,
+        process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'ms-playwright') : '',
+        path.join(os.homedir(), '.cache', 'ms-playwright'),
+        '/root/.cache/ms-playwright',
+        '/home/.cache/ms-playwright',
+        path.join(AGENT_NODE_MODULES, 'playwright-core', '.local-browsers'),
+      ].filter(Boolean) as string[];
+      return candidates.find(p => fs.existsSync(p)) || '';
+    })();
+
+    const availableBrowsers = config.browsers.filter(b => {
+      if (!browsersInstallPath) return b === 'chromium';
+      const dirPrefix = b === 'webkit' ? 'webkit' : b === 'firefox' ? 'firefox' : 'chromium';
+      try { return fs.readdirSync(browsersInstallPath).some(d => d.startsWith(dirPrefix)); }
+      catch { return b === 'chromium'; }
+    });
+
+    if (availableBrowsers.length === 0) {
+      emitLog(`[goState Agent] AVISO: browsers solicitados (${config.browsers.join(', ')}) não encontrados. Usando chromium como fallback.\n`);
+      availableBrowsers.push('chromium');
+    } else if (availableBrowsers.length < config.browsers.length) {
+      const missing = config.browsers.filter(b => !availableBrowsers.includes(b));
+      emitLog(`[goState Agent] AVISO: browsers não instalados ignorados: ${missing.join(', ')}\n`);
+    }
+
+    const playwrightConfig = generatePlaywrightConfig(execWorkDir, config, availableBrowsers);
     const configPath = path.join(execWorkDir, 'playwright.config.js');
     fs.writeFileSync(configPath, playwrightConfig, 'utf-8');
 
     emitLog(`[goState Agent] Iniciando execução ${execId}\n`);
-    emitLog(`[goState Agent] Framework: ${config.framework} | Browsers: ${config.browsers.join(', ')}\n`);
+    emitLog(`[goState Agent] Framework: ${config.framework} | Browsers: ${availableBrowsers.join(', ')}\n`);
     emitLog(`[goState Agent] Timeout: ${config.timeout}ms\n\n`);
 
     const startTime = Date.now();
@@ -296,8 +335,9 @@ function generatePlaywrightCode(steps: any[]): string {
   return code;
 }
 
-function generatePlaywrightConfig(workDir: string, config: ExecConfig): string {
-  const projects = config.browsers.map(b => `{ name: '${b}', use: { browserName: '${b}' } }`).join(', ');
+function generatePlaywrightConfig(workDir: string, config: ExecConfig, browsers?: string[]): string {
+  const effectiveBrowsers = browsers && browsers.length > 0 ? browsers : config.browsers;
+  const projects = effectiveBrowsers.map(b => `{ name: '${b}', use: { browserName: '${b}' } }`).join(', ');
   const video = config.videoEnabled ? `'on'` : `'retain-on-failure'`;
   const wdFwd = workDir.replace(/\\/g, '/');
   return `
@@ -351,8 +391,16 @@ function runPlaywright(
     const cmd = `"${playwrightBin}" test "${path.basename(scriptPath)}" --config="${configPath}"`;
     emitLog(`[goState Agent] $ ${cmd}\n`);
 
-    const msPwPath = path.join(process.env.LOCALAPPDATA || '', 'ms-playwright');
-    const browsersPath = fs.existsSync(msPwPath) ? msPwPath : '';
+    const browsersPath = (() => {
+      const candidates = [
+        process.env.PLAYWRIGHT_BROWSERS_PATH,
+        process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'ms-playwright') : '',
+        path.join(os.homedir(), '.cache', 'ms-playwright'),
+        '/root/.cache/ms-playwright',
+        path.join(AGENT_NODE_MODULES, 'playwright-core', '.local-browsers'),
+      ].filter(Boolean) as string[];
+      return candidates.find(p => fs.existsSync(p)) || '';
+    })();
 
     const hardTimeout = config.timeout + 60000;
     const killTimer = setTimeout(() => {
