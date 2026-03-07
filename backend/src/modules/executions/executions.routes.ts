@@ -268,13 +268,55 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
   const event = eventMap[status];
   if (!event) return;
 
+  // Fetch integrations that match: enabled + (global OR same project)
   const integrations = db.prepare(
-    'SELECT * FROM integrations WHERE enabled = 1'
-  ).all() as any[];
+    `SELECT * FROM integrations WHERE enabled = 1
+     AND (project_id IS NULL OR project_id = ?)`
+  ).all(exec.project_id || null) as any[];
 
   for (const intg of integrations) {
     const events: string[] = JSON.parse(intg.events || '[]');
     if (!events.includes(event)) continue;
+
+    const flags = (() => { try { return JSON.parse(intg.include_flags || '{}'); } catch { return {}; } })();
+
+    // Build enriched data based on include_flags
+    let stepsData: any[] | undefined;
+    let detailedReport: any | undefined;
+    let artifacts: string[] | undefined;
+
+    if (flags.steps || flags.detailed_report) {
+      const rawSteps = db.prepare(
+        'SELECT name, type, status, duration_ms, error_message FROM exec_steps WHERE execution_id = ? ORDER BY step_index ASC'
+      ).all(exec.id) as any[];
+
+      if (flags.steps && rawSteps.length > 0) {
+        stepsData = rawSteps.map((s: any) => ({
+          name: s.name,
+          status: s.status,
+          duration_ms: s.duration_ms,
+          error_message: s.error_message || undefined,
+        }));
+      }
+
+      if (flags.detailed_report && rawSteps.length > 0) {
+        detailedReport = {
+          total_steps: rawSteps.length,
+          passed_steps: rawSteps.filter((s: any) => s.status === 'passed').length,
+          failed_steps: rawSteps.filter((s: any) => s.status === 'failed').length,
+          skipped_steps: rawSteps.filter((s: any) => s.status === 'skipped').length,
+        };
+      }
+    }
+
+    if (flags.artifacts) {
+      const arts = db.prepare(
+        `SELECT filename FROM execution_artifacts WHERE execution_id = ? ORDER BY created_at ASC`
+      ).all(exec.id) as any[];
+      if (arts.length > 0) {
+        artifacts = arts.map((a: any) => a.filename);
+      }
+    }
 
     try {
       const payload = buildPayload(intg.type, {
@@ -283,6 +325,9 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
         project: exec.project_name || '—',
         duration_ms: exec.duration_ms || 0,
         from_schedule: fromSchedule,
+        steps: stepsData,
+        detailed_report: detailedReport,
+        artifacts,
       });
 
       await fetch(intg.webhook_url, {

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { integrationsApi } from '../lib/api';
+import { integrationsApi, projectsApi } from '../lib/api';
 import { formatDate } from '../lib/utils';
 import {
   Plus, Trash2, Loader2, Webhook, CheckCircle2, AlertCircle, Send,
   Play, XCircle, Zap, Bell, ChevronDown, ChevronUp, ExternalLink, Copy, Check,
+  Pencil, FileText, List, Paperclip, Globe, FolderOpen, X,
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
@@ -103,34 +104,75 @@ function CopyBtn({ text }: { text: string }) {
   );
 }
 
+const INCLUDE_FLAGS_OPTIONS = [
+  {
+    key: 'detailed_report',
+    icon: FileText,
+    label: 'Relatório detalhado',
+    description: 'Total de steps, quantos passaram/falharam/pularam',
+  },
+  {
+    key: 'steps',
+    icon: List,
+    label: 'Lista de steps',
+    description: 'Cada step com status, duração e erro (colapsível no Discord)',
+  },
+  {
+    key: 'artifacts',
+    icon: Paperclip,
+    label: 'Artefatos',
+    description: 'Nomes dos arquivos gerados (vídeos, screenshots)',
+  },
+];
+
+const EMPTY_FLAGS = { detailed_report: false, steps: false, artifacts: false };
+const EMPTY_FORM = { type: 'discord', label: '', webhook_url: '', events: ['execution.failed'] as string[], enabled: true, project_id: '' as string | null, include_flags: EMPTY_FLAGS };
+
 export default function IntegrationsPage() {
   const qc = useQueryClient();
   const toast = useToast();
   const [showForm, setShowForm] = useState(false);
   const [showGuide, setShowGuide] = useState(false);
+  const [filterProjectId, setFilterProjectId] = useState<string>('');
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean } | null>(null);
-  const [form, setForm] = useState({
-    type: 'discord',
-    label: '',
-    webhook_url: '',
-    events: ['execution.failed'] as string[],
-    enabled: true,
-  });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<any>(null);
+  const [form, setForm] = useState<typeof EMPTY_FORM>({ ...EMPTY_FORM });
 
-  const { data, isLoading } = useQuery({ queryKey: ['integrations'], queryFn: () => integrationsApi.list() });
+  const { data: projectsData } = useQuery({ queryKey: ['projects'], queryFn: () => projectsApi.list() });
+  const projects: any[] = projectsData?.data?.projects || [];
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['integrations', filterProjectId],
+    queryFn: () => integrationsApi.list(filterProjectId || undefined),
+  });
   const integrations: any[] = data?.data?.integrations || [];
 
   const create = useMutation({
-    mutationFn: () => integrationsApi.create(form),
+    mutationFn: () => integrationsApi.create({
+      ...form,
+      project_id: form.project_id || null,
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['integrations'] });
       setShowForm(false);
       setShowGuide(false);
-      setForm({ type: 'discord', label: '', webhook_url: '', events: ['execution.failed'], enabled: true });
+      setForm({ ...EMPTY_FORM });
       toast.success('Integração criada com sucesso');
     },
     onError: () => toast.error('Erro ao criar integração'),
+  });
+
+  const update = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => integrationsApi.update(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['integrations'] });
+      setEditingId(null);
+      setEditForm(null);
+      toast.success('Integração atualizada');
+    },
+    onError: () => toast.error('Erro ao atualizar integração'),
   });
 
   const remove = useMutation({
@@ -156,10 +198,29 @@ export default function IntegrationsPage() {
     }
   };
 
+  const startEdit = (intg: any) => {
+    setEditingId(intg.id);
+    setEditForm({
+      label: intg.label,
+      webhook_url: intg.webhook_url,
+      events: Array.isArray(intg.events) ? intg.events : [],
+      enabled: !!intg.enabled,
+      project_id: intg.project_id || '',
+      include_flags: { ...EMPTY_FLAGS, ...(intg.include_flags || {}) },
+    });
+  };
+
   const toggleEvent = (event: string) => {
     setForm(f => ({
       ...f,
       events: f.events.includes(event) ? f.events.filter(e => e !== event) : [...f.events, event],
+    }));
+  };
+
+  const toggleEditEvent = (event: string) => {
+    setEditForm((f: any) => ({
+      ...f,
+      events: f.events.includes(event) ? f.events.filter((e: string) => e !== event) : [...f.events, event],
     }));
   };
 
@@ -168,21 +229,40 @@ export default function IntegrationsPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>Integrações</h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
             Notificações para Discord, Slack, Teams, Telegram, PagerDuty e webhooks
           </p>
         </div>
-        <button className="btn-primary flex items-center gap-2" onClick={() => { setShowForm(v => !v); setShowGuide(false); }}>
-          <Plus className="w-4 h-4" /> Nova Integração
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Project filter */}
+          <div className="relative">
+            <FolderOpen className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
+            <select
+              className="input pl-8 pr-8 text-xs h-8"
+              value={filterProjectId}
+              onChange={e => setFilterProjectId(e.target.value)}
+            >
+              <option value="">Todos os projetos</option>
+              {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <button className="btn-primary flex items-center gap-2" onClick={() => { setShowForm(v => !v); setShowGuide(false); }}>
+            <Plus className="w-4 h-4" /> Nova Integração
+          </button>
+        </div>
       </div>
 
       {showForm && (
         <div className="card p-5 space-y-5">
-          <h3 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Nova Integração</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Nova Integração</h3>
+            <button className="p-1 rounded" style={{ color: 'var(--text-muted)' }} onClick={() => { setShowForm(false); setShowGuide(false); }}>
+              <X className="w-4 h-4" />
+            </button>
+          </div>
 
           {/* Type selector */}
           <div>
@@ -278,6 +358,50 @@ export default function IntegrationsPage() {
             </div>
           </div>
 
+          {/* Project scope */}
+          <div>
+            <label className="block text-xs font-medium mb-1 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+              <FolderOpen className="w-3 h-3" /> Escopo do projeto
+            </label>
+            <select
+              className="input text-sm"
+              value={form.project_id || ''}
+              onChange={e => setForm(f => ({ ...f, project_id: e.target.value || null }))}
+            >
+              <option value="">Global — todos os projetos</option>
+              {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>"Global" dispara para execuções de qualquer projeto.</p>
+          </div>
+
+          {/* Include flags */}
+          <div>
+            <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>O que incluir na notificação</label>
+            <div className="space-y-2">
+              {INCLUDE_FLAGS_OPTIONS.map(opt => {
+                const Icon = opt.icon;
+                const active = form.include_flags[opt.key as keyof typeof EMPTY_FLAGS];
+                return (
+                  <label key={opt.key} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    active ? 'border-violet-500/40 bg-violet-500/8' : ''
+                  }`} style={!active ? { borderColor: 'var(--border)', background: 'transparent' } : {}}>
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 accent-violet-500"
+                      checked={active}
+                      onChange={() => setForm(f => ({ ...f, include_flags: { ...f.include_flags, [opt.key]: !active } }))}
+                    />
+                    <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${active ? 'text-violet-400' : ''}`} style={!active ? { color: 'var(--text-muted)' } : {}} />
+                    <div>
+                      <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>{opt.label}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{opt.description}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Events */}
           <div>
             <label className="block text-xs font-medium mb-2 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
@@ -335,61 +459,178 @@ export default function IntegrationsPage() {
           {integrations.map((intg) => {
             const info = typeInfo(intg.type);
             const events: string[] = Array.isArray(intg.events) ? intg.events : [];
+            const flags = intg.include_flags || {};
+            const activeFlags = INCLUDE_FLAGS_OPTIONS.filter(o => flags[o.key]);
+            const intgProject = projects.find((p: any) => p.id === intg.project_id);
+            const isEditing = editingId === intg.id;
+
             return (
-              <div key={intg.id} className="card p-4 group">
+              <div key={intg.id} className="card p-4 group flex flex-col gap-3">
+                {/* Header */}
                 <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className={`text-xs px-2.5 py-1 rounded-lg border font-semibold ${info.bg} ${info.color}`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className={`text-xs px-2.5 py-1 rounded-lg border font-semibold flex-shrink-0 ${info.bg} ${info.color}`}>
                       {info.label}
                     </span>
-                    <div>
-                      <p className="font-semibold text-sm" style={{ color: 'var(--text)' }}>{intg.label}</p>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm truncate" style={{ color: 'var(--text)' }}>{intg.label}</p>
                       <p className="text-xs mt-0.5 truncate max-w-[200px]" style={{ color: 'var(--text-muted)' }}>{intg.webhook_url}</p>
                     </div>
                   </div>
-                  <button
-                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 transition-all"
-                    style={{ color: 'var(--text-muted)' }}
-                    onClick={() => { if (confirm('Remover integração?')) remove.mutate(intg.id); }}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button
+                      className="p-1.5 rounded hover:bg-violet-500/10 transition-colors"
+                      style={{ color: 'var(--text-muted)' }}
+                      title="Editar"
+                      onClick={() => isEditing ? setEditingId(null) : startEdit(intg)}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      className="p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 transition-colors"
+                      style={{ color: 'var(--text-muted)' }}
+                      onClick={() => { if (confirm('Remover integração?')) remove.mutate(intg.id); }}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {events.map((ev: string) => {
-                    const evInfo = EVENTS.find(e => e.value === ev);
-                    const Icon = evInfo?.icon || Bell;
-                    return (
-                      <span
-                        key={ev}
-                        className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border font-medium ${evInfo?.activeBg || ''}`}
-                        style={!evInfo ? { background: 'var(--surface-3)', color: 'var(--text-muted)', border: '1px solid var(--border)' } : {}}
-                      >
-                        <Icon className="w-3 h-3" />
-                        {evInfo?.label || ev}
+                {/* Project badge + flags badges */}
+                {(intgProject || activeFlags.length > 0) && !isEditing && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {intgProject && (
+                      <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border font-medium"
+                        style={{ background: 'var(--surface-3)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}>
+                        <FolderOpen className="w-3 h-3" />{intgProject.name}
                       </span>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-3 pt-3 border-t flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatDate(intg.created_at)}</span>
-                  <button
-                    className="flex items-center gap-1.5 text-xs btn-ghost py-1 px-2"
-                    disabled={testingId === intg.id}
-                    onClick={() => testIntegration(intg.id)}
-                  >
-                    {testingId === intg.id ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : testResult?.id === intg.id ? (
-                      testResult?.ok ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <AlertCircle className="w-3 h-3 text-red-400" />
-                    ) : (
-                      <Send className="w-3 h-3" />
                     )}
-                    {testResult?.id === intg.id ? (testResult?.ok ? 'Enviado!' : 'Falhou') : 'Testar'}
-                  </button>
-                </div>
+                    {!intgProject && (
+                      <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border font-medium"
+                        style={{ background: 'var(--surface-3)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}>
+                        <Globe className="w-3 h-3" />Global
+                      </span>
+                    )}
+                    {activeFlags.map(f => {
+                      const Icon = f.icon;
+                      return (
+                        <span key={f.key} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border font-medium text-violet-400 bg-violet-500/10 border-violet-500/20">
+                          <Icon className="w-3 h-3" />{f.label}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Event badges */}
+                {!isEditing && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {events.map((ev: string) => {
+                      const evInfo = EVENTS.find(e => e.value === ev);
+                      const Icon = evInfo?.icon || Bell;
+                      return (
+                        <span
+                          key={ev}
+                          className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border font-medium ${evInfo?.activeBg || ''}`}
+                          style={!evInfo ? { background: 'var(--surface-3)', color: 'var(--text-muted)', border: '1px solid var(--border)' } : {}}
+                        >
+                          <Icon className="w-3 h-3" />
+                          {evInfo?.label || ev}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Inline edit form */}
+                {isEditing && editForm && (
+                  <div className="space-y-3 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Rótulo</label>
+                        <input className="input text-xs" value={editForm.label} onChange={e => setEditForm((f: any) => ({ ...f, label: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Webhook URL</label>
+                        <input className="input text-xs" value={editForm.webhook_url} onChange={e => setEditForm((f: any) => ({ ...f, webhook_url: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Projeto</label>
+                      <select className="input text-xs" value={editForm.project_id || ''} onChange={e => setEditForm((f: any) => ({ ...f, project_id: e.target.value || null }))}>
+                        <option value="">Global</option>
+                        {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Eventos</label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {EVENTS.map(ev => {
+                          const Icon = ev.icon;
+                          const active = editForm.events.includes(ev.value);
+                          return (
+                            <button key={ev.value} type="button" onClick={() => toggleEditEvent(ev.value)}
+                              className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border font-medium transition-all ${active ? ev.activeBg : ''}`}
+                              style={!active ? { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'transparent' } : {}}>
+                              <Icon className="w-3 h-3" />{ev.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>O que incluir na notificação</label>
+                      <div className="space-y-1.5">
+                        {INCLUDE_FLAGS_OPTIONS.map(opt => {
+                          const Icon = opt.icon;
+                          const active = editForm.include_flags[opt.key];
+                          return (
+                            <label key={opt.key} className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all ${
+                              active ? 'border-violet-500/40 bg-violet-500/8' : ''
+                            }`} style={!active ? { borderColor: 'var(--border)', background: 'transparent' } : {}}>
+                              <input type="checkbox" className="mt-0.5 accent-violet-500" checked={active}
+                                onChange={() => setEditForm((f: any) => ({ ...f, include_flags: { ...f.include_flags, [opt.key]: !active } }))} />
+                              <Icon className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${active ? 'text-violet-400' : ''}`} style={!active ? { color: 'var(--text-muted)' } : {}} />
+                              <div>
+                                <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>{opt.label}</p>
+                                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{opt.description}</p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button className="btn-primary text-xs py-1 px-3 flex items-center gap-1.5"
+                        disabled={update.isPending}
+                        onClick={() => update.mutate({ id: intg.id, data: { ...editForm, project_id: editForm.project_id || null } })}>
+                        {update.isPending && <Loader2 className="w-3 h-3 animate-spin" />} Salvar
+                      </button>
+                      <button className="btn-ghost text-xs py-1 px-3" onClick={() => setEditingId(null)}>Cancelar</button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Footer */}
+                {!isEditing && (
+                  <div className="pt-2 border-t flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatDate(intg.created_at)}</span>
+                    <button
+                      className="flex items-center gap-1.5 text-xs btn-ghost py-1 px-2"
+                      disabled={testingId === intg.id}
+                      onClick={() => testIntegration(intg.id)}
+                    >
+                      {testingId === intg.id ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : testResult?.id === intg.id ? (
+                        testResult?.ok ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <AlertCircle className="w-3 h-3 text-red-400" />
+                      ) : (
+                        <Send className="w-3 h-3" />
+                      )}
+                      {testResult?.id === intg.id ? (testResult?.ok ? 'Enviado!' : 'Falhou') : 'Testar'}
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}

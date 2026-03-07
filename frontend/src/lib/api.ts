@@ -107,7 +107,7 @@ export const schedulesApi = {
 };
 
 export const integrationsApi = {
-  list: () => api.get('/api/integrations'),
+  list: (project_id?: string) => api.get('/api/integrations', { params: project_id ? { project_id } : {} }),
   create: (data: any) => api.post('/api/integrations', data),
   update: (id: string, data: any) => api.patch(`/api/integrations/${id}`, data),
   remove: (id: string) => api.delete(`/api/integrations/${id}`),

@@ -384,6 +384,15 @@ function runMigrations(db: Database.Database): void {
   };
   migrations.push(v11);
 
+  const v12: any = {
+    version: 12,
+    sql: `
+      ALTER TABLE integrations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE CASCADE;
+      ALTER TABLE integrations ADD COLUMN include_flags TEXT NOT NULL DEFAULT '{}';
+    `
+  };
+  migrations.push(v12);
+
   for (const migration of migrations) {
     if (!applied.includes(migration.version)) {
       db.exec(migration.sql);
