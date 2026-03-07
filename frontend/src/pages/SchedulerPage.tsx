@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { schedulesApi, projectsApi, agentsApi, environmentsApi } from '../lib/api';
+import { schedulesApi, projectsApi, agentsApi, environmentsApi, testPlansApi } from '../lib/api';
 import { formatDate } from '../lib/utils';
 import { Plus, Clock, Trash2, Loader2, ToggleLeft, ToggleRight, CalendarClock, PlayCircle, ChevronRight } from 'lucide-react';
 import { useToast } from '../components/Toast';
@@ -56,7 +56,9 @@ export default function SchedulerPage() {
   const [customCron, setCustomCron] = useState(false);
   const [form, setForm] = useState({
     label: '',
+    mode: 'tc' as 'tc' | 'plan',
     project_id: '',
+    test_plan_id: '',
     environment_id: '',
     cron: '0 8 * * *',
     agent_id: '',
@@ -73,6 +75,13 @@ export default function SchedulerPage() {
     enabled: !!form.project_id,
   });
 
+  const { data: plansData } = useQuery({
+    queryKey: ['test-plans-sched', form.project_id],
+    queryFn: () => testPlansApi.list(form.project_id),
+    enabled: !!form.project_id && form.mode === 'plan',
+  });
+  const plans: any[] = plansData?.data?.items || [];
+
   const schedules: any[] = data?.data?.schedules || [];
   const projects: any[] = projectsData?.data?.projects || [];
   const agents: any[] = agentsData?.data?.agents || [];
@@ -84,6 +93,7 @@ export default function SchedulerPage() {
     mutationFn: () => schedulesApi.create({
       label: form.label,
       project_id: form.project_id || undefined,
+      test_plan_id: form.mode === 'plan' ? (form.test_plan_id || undefined) : undefined,
       environment_id: form.environment_id || undefined,
       cron: form.cron,
       agent_id: form.agent_id || undefined,
@@ -94,7 +104,7 @@ export default function SchedulerPage() {
       qc.invalidateQueries({ queryKey: ['schedules'] });
       setShowForm(false);
       setCustomCron(false);
-      setForm({ label: '', project_id: '', environment_id: '', cron: '0 8 * * *', agent_id: '', browsers: 'chromium', enabled: true });
+      setForm({ label: '', mode: 'tc', project_id: '', test_plan_id: '', environment_id: '', cron: '0 8 * * *', agent_id: '', browsers: 'chromium', enabled: true });
       toast.success('Agendamento criado');
     },
     onError: () => toast.error('Erro ao criar agendamento'),
@@ -154,9 +164,30 @@ export default function SchedulerPage() {
               <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Rótulo *</label>
               <input className="input" placeholder="Ex: Smoke Tests — Produção" value={form.label} onChange={e => setForm(f => ({ ...f, label: e.target.value }))} autoFocus />
             </div>
+            <div className="col-span-2">
+              <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Tipo de alvo</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${form.mode === 'tc' ? 'border-blue-500/60 bg-blue-500/10 text-blue-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                  style={form.mode !== 'tc' ? { borderColor: 'var(--border)' } : {}}
+                  onClick={() => setForm(f => ({ ...f, mode: 'tc', test_plan_id: '' }))}
+                >
+                  Caso de Teste (via Projeto)
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${form.mode === 'plan' ? 'border-purple-500/60 bg-purple-500/10 text-purple-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                  style={form.mode !== 'plan' ? { borderColor: 'var(--border)' } : {}}
+                  onClick={() => setForm(f => ({ ...f, mode: 'plan' }))}
+                >
+                  Test Plan
+                </button>
+              </div>
+            </div>
             <div>
               <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Projeto *</label>
-              <select className="input" value={form.project_id} onChange={e => setForm(f => ({ ...f, project_id: e.target.value }))}>
+              <select className="input" value={form.project_id} onChange={e => setForm(f => ({ ...f, project_id: e.target.value, test_plan_id: '' }))}>
                 <option value="">Selecione um projeto</option>
                 {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
@@ -195,6 +226,20 @@ export default function SchedulerPage() {
                 <option value="webkit">WebKit</option>
               </select>
             </div>
+            {form.mode === 'plan' && form.project_id && (
+              <div className="col-span-2">
+                <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Test Plan *</label>
+                <select className="input" value={form.test_plan_id} onChange={e => setForm(f => ({ ...f, test_plan_id: e.target.value }))}>
+                  <option value="">Selecione um plano</option>
+                  {plans.map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                {plans.length === 0 && (
+                  <p className="text-xs mt-1 text-amber-400">Nenhum test plan encontrado para este projeto.</p>
+                )}
+              </div>
+            )}
             {envs.length > 0 && (
               <div>
                 <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Ambiente</label>
@@ -211,7 +256,7 @@ export default function SchedulerPage() {
           <div className="flex gap-2 pt-1">
             <button
               className="btn-primary flex items-center gap-2"
-              disabled={!form.label.trim() || !form.project_id || !form.cron || create.isPending}
+              disabled={!form.label.trim() || !form.project_id || !form.cron || create.isPending || (form.mode === 'plan' && !form.test_plan_id)}
               onClick={() => create.mutate()}
             >
               {create.isPending && <Loader2 className="w-3 h-3 animate-spin" />} Criar Agendamento
@@ -257,7 +302,12 @@ export default function SchedulerPage() {
                     </div>
                   </td>
                   <td className="px-4 py-3 text-sm max-w-[160px] truncate" style={{ color: 'var(--text-muted)' }}>
-                    {s.project_name || s.tc_title || '—'}
+                    {s.plan_name ? (
+                      <span className="flex items-center gap-1">
+                        <span className="text-xs px-1 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">Plano</span>
+                        {s.plan_name}
+                      </span>
+                    ) : (s.project_name || s.tc_title || '—')}
                   </td>
                   <td className="px-4 py-3">
                     <div>

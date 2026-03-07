@@ -8,6 +8,7 @@ const router = Router();
 
 const scheduleSchema = z.object({
   test_case_id: z.string().uuid().optional(),
+  test_plan_id: z.string().uuid().optional(),
   project_id: z.string().uuid().optional(),
   cron: z.string().min(5),
   agent_id: z.string().uuid().optional().nullable(),
@@ -22,10 +23,11 @@ const db = getDb();
 router.get('/', (req: any, res) => {
   try {
     const rows = db.prepare(`
-      SELECT s.*, tc.title as tc_title, p.name as project_name
+      SELECT s.*, tc.title as tc_title, p.name as project_name, tp.name as plan_name
       FROM schedules s
       LEFT JOIN test_cases tc ON tc.id = s.test_case_id
       LEFT JOIN projects p ON p.id = s.project_id
+      LEFT JOIN test_plans tp ON tp.id = s.test_plan_id
       ORDER BY s.created_at DESC
     `).all();
     res.json({ schedules: rows });
@@ -38,18 +40,18 @@ router.post('/', (req: any, res) => {
   const body = scheduleSchema.safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: body.error.flatten() });
 
-  const { test_case_id, project_id, cron, agent_id, browsers, enabled, label } = body.data;
-  if (!test_case_id && !project_id) {
-    return res.status(400).json({ error: 'Informe test_case_id ou project_id' });
+  const { test_case_id, test_plan_id, project_id, cron, agent_id, browsers, enabled, label } = body.data;
+  if (!test_case_id && !test_plan_id && !project_id) {
+    return res.status(400).json({ error: 'Informe test_case_id, test_plan_id ou project_id' });
   }
 
   const id = uuidv4();
   const now = new Date().toISOString();
   try {
     db.prepare(`
-      INSERT INTO schedules (id, test_case_id, project_id, cron, agent_id, browsers, enabled, label, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, test_case_id ?? null, project_id ?? null, cron, agent_id ?? null, JSON.stringify(browsers), enabled ? 1 : 0, label, req.user.id, now, now);
+      INSERT INTO schedules (id, test_case_id, test_plan_id, project_id, cron, agent_id, browsers, enabled, label, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, test_case_id ?? null, test_plan_id ?? null, project_id ?? null, cron, agent_id ?? null, JSON.stringify(browsers), enabled ? 1 : 0, label, req.user.id, now, now);
 
     const schedule = db.prepare('SELECT * FROM schedules WHERE id = ?').get(id);
     res.status(201).json({ schedule });
