@@ -6,7 +6,7 @@ import { formatDate, formatDuration, statusBadgeClass, statusLabel } from '../li
 import {
   PlayCircle, RefreshCw, X, Loader2, ExternalLink,
   CheckCircle2, XCircle, Clock, AlertCircle, ChevronsLeft, ChevronLeft, ChevronRight,
-  RotateCcw,
+  RotateCcw, Columns2,
 } from 'lucide-react';
 import { io as socketIo } from 'socket.io-client';
 import { useToast } from '../components/Toast';
@@ -41,6 +41,18 @@ export default function ExecutionsPage() {
   const [filterProject, setFilterProject] = useState<string>('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<number>(9);
+  const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
+  const [showCompare, setShowCompare] = useState(false);
+
+  const toggleCompare = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCompareSet(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) { n.delete(id); }
+      else if (n.size < 2) { n.add(id); }
+      return n;
+    });
+  };
 
   // Fetch a large batch — enough to support all pagination client-side
   const { data, isLoading, refetch } = useQuery({
@@ -139,6 +151,24 @@ export default function ExecutionsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {compareSet.size === 2 && (
+            <button
+              className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border transition-colors"
+              style={{ borderColor: 'var(--primary)', color: 'var(--primary)' }}
+              onClick={() => setShowCompare(true)}
+            >
+              <Columns2 className="w-3.5 h-3.5" /> Comparar selecionadas
+            </button>
+          )}
+          {compareSet.size > 0 && (
+            <button
+              className="text-xs px-2 py-1.5 rounded-lg transition-colors"
+              style={{ color: 'var(--text-muted)' }}
+              onClick={() => setCompareSet(new Set())}
+            >
+              <X className="w-3 h-3 inline mr-1" />Limpar seleção ({compareSet.size}/2)
+            </button>
+          )}
           {failedCount > 0 && (
             <button
               className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50"
@@ -265,10 +295,10 @@ export default function ExecutionsPage() {
               {pageExecutions.map((exec) => (
                 <tr
                   key={exec.id}
-                  className="border-b transition-colors cursor-pointer group"
-                  style={{ borderColor: 'var(--border)' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  className={`border-b transition-colors cursor-pointer group ${compareSet.has(exec.id) ? 'ring-1 ring-inset ring-blue-500/40' : ''}`}
+                  style={{ borderColor: 'var(--border)', background: compareSet.has(exec.id) ? 'rgba(59,130,246,0.05)' : '' }}
+                  onMouseEnter={e => { if (!compareSet.has(exec.id)) e.currentTarget.style.background = 'var(--surface-2)'; }}
+                  onMouseLeave={e => { if (!compareSet.has(exec.id)) e.currentTarget.style.background = 'transparent'; }}
                   onClick={() => navigate(`/executions/${exec.id}`)}
                 >
                   <td className="px-4 py-3"><StatusDot status={exec.status} /></td>
@@ -288,19 +318,33 @@ export default function ExecutionsPage() {
                   <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--text)' }}>{formatDuration(exec.duration_ms)}</td>
                   <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>{formatDate(exec.created_at)}</td>
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
-                      {['queued', 'running'].includes(exec.status) && (
-                        <button
-                          className="p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 transition-colors" style={{ color: 'var(--text-muted)' }}
-                          onClick={e => { e.stopPropagation(); cancel.mutate(exec.id); }}
-                          title="Cancelar"
-                        ><X className="w-3.5 h-3.5" /></button>
-                      )}
+                    <div className="flex items-center gap-1">
                       <button
-                        className="p-1.5 rounded hover:bg-black/10 transition-colors" style={{ color: 'var(--text-muted)' }}
-                        onClick={e => { e.stopPropagation(); navigate(`/executions/${exec.id}`); }}
-                        title="Ver detalhes"
-                      ><ExternalLink className="w-3.5 h-3.5" /></button>
+                        className={`p-1.5 rounded transition-all ${
+                          compareSet.has(exec.id)
+                            ? 'text-blue-400 bg-blue-500/15'
+                            : 'opacity-0 group-hover:opacity-100 hover:bg-blue-500/10 hover:text-blue-400'
+                        } ${compareSet.size >= 2 && !compareSet.has(exec.id) ? 'opacity-20 pointer-events-none' : ''}`}
+                        style={{ color: compareSet.has(exec.id) ? undefined : 'var(--text-muted)' }}
+                        onClick={e => toggleCompare(exec.id, e)}
+                        title={compareSet.has(exec.id) ? 'Remover da comparação' : 'Selecionar para comparar'}
+                      >
+                        <Columns2 className="w-3.5 h-3.5" />
+                      </button>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        {['queued', 'running'].includes(exec.status) && (
+                          <button
+                            className="p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 transition-colors" style={{ color: 'var(--text-muted)' }}
+                            onClick={e => { e.stopPropagation(); cancel.mutate(exec.id); }}
+                            title="Cancelar"
+                          ><X className="w-3.5 h-3.5" /></button>
+                        )}
+                        <button
+                          className="p-1.5 rounded hover:bg-black/10 transition-colors" style={{ color: 'var(--text-muted)' }}
+                          onClick={e => { e.stopPropagation(); navigate(`/executions/${exec.id}`); }}
+                          title="Ver detalhes"
+                        ><ExternalLink className="w-3.5 h-3.5" /></button>
+                      </div>
                     </div>
                   </td>
                 </tr>
@@ -402,6 +446,144 @@ export default function ExecutionsPage() {
           </div>
         </div>
       )}
+
+      {/* Compare modal */}
+      {showCompare && compareSet.size === 2 && (
+        <CompareModal
+          ids={Array.from(compareSet)}
+          allExecs={allExecutions}
+          onClose={() => setShowCompare(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ComparePanel({ exec }: { exec: any }) {
+  const { data } = useQuery({
+    queryKey: ['execution-detail', exec.id],
+    queryFn: () => executionsApi.get(exec.id),
+  });
+  const detail = data?.data;
+  const steps: any[] = detail?.steps || [];
+
+  return (
+    <div className="flex flex-col gap-3 h-full overflow-y-auto">
+      {/* Header */}
+      <div className="rounded-lg p-3 space-y-1" style={{ background: 'var(--surface-3)' }}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <StatusDot status={exec.status} />
+          <span className="text-xs font-medium truncate" style={{ color: 'var(--text)' }}>
+            {exec.tc_title || exec.script_filename || `#${exec.id.slice(0, 8)}`}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+          <span>ID: <code className="font-mono">#{exec.id.slice(0, 8)}</code></span>
+          <span>Duração: {formatDuration(exec.duration_ms)}</span>
+          <span>Agente: {exec.agent_name || '—'}</span>
+          <span>Iniciado: {formatDate(exec.created_at)}</span>
+          {exec.browsers && <span>Browser: {(() => { try { return JSON.parse(exec.browsers)[0]; } catch { return exec.browsers; } })()}</span>}
+          {exec.project_name && <span>Projeto: {exec.project_name}</span>}
+        </div>
+      </div>
+
+      {/* Steps */}
+      {steps.length > 0 ? (
+        <div className="space-y-1">
+          <p className="text-xs font-semibold" style={{ color: 'var(--text-muted)' }}>Steps ({steps.length})</p>
+          {steps.map((s: any, i: number) => (
+            <div
+              key={s.id || i}
+              className="flex items-start gap-2 px-2 py-1.5 rounded text-xs"
+              style={{ background: 'var(--surface-2)' }}
+            >
+              <span className="flex-shrink-0 mt-0.5">
+                {s.status === 'passed' ? <CheckCircle2 className="w-3 h-3 text-green-400" /> :
+                 s.status === 'failed' ? <XCircle className="w-3 h-3 text-red-400" /> :
+                 s.status === 'error' ? <AlertCircle className="w-3 h-3 text-orange-400" /> :
+                 <Clock className="w-3 h-3 text-slate-500" />}
+              </span>
+              <div className="flex-1 min-w-0">
+                <span className="truncate block" style={{ color: 'var(--text)' }}>
+                  {s.action || s.description || `Step ${i + 1}`}
+                </span>
+                {s.error_message && (
+                  <span className="text-red-400 block mt-0.5 truncate">{s.error_message}</span>
+                )}
+              </div>
+              {s.duration_ms != null && (
+                <span className="flex-shrink-0 font-mono" style={{ color: 'var(--text-muted)' }}>
+                  {formatDuration(s.duration_ms)}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-center py-4" style={{ color: 'var(--text-muted)' }}>
+          {detail ? 'Sem steps registrados' : 'Carregando...'}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function CompareModal({ ids, allExecs, onClose }: { ids: string[]; allExecs: any[]; onClose: () => void }) {
+  const execA = allExecs.find(e => e.id === ids[0]);
+  const execB = allExecs.find(e => e.id === ids[1]);
+  if (!execA || !execB) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-stretch justify-center bg-black/70 backdrop-blur-sm p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex flex-col w-full max-w-6xl rounded-xl overflow-hidden"
+        style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Modal header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
+          <div className="flex items-center gap-2">
+            <Columns2 className="w-4 h-4 text-blue-400" />
+            <span className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Comparação de Execuções</span>
+          </div>
+          <button
+            className="p-1.5 rounded hover:bg-white/10 transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onClick={onClose}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Column headers */}
+        <div className="grid grid-cols-2 border-b flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
+          {[execA, execB].map((exec, i) => (
+            <div
+              key={exec.id}
+              className={`px-5 py-2 text-xs font-semibold flex items-center gap-2 ${i === 0 ? 'border-r' : ''}`}
+              style={{ borderColor: 'var(--border)', color: 'var(--text-muted)', background: 'var(--surface-2)' }}
+            >
+              <span className="rounded px-1.5 py-0.5 text-xs" style={{ background: 'var(--surface-3)' }}>
+                {i === 0 ? 'A' : 'B'}
+              </span>
+              <span className="truncate">{exec.tc_title || exec.script_filename || `#${exec.id.slice(0, 8)}`}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Split panels */}
+        <div className="grid grid-cols-2 flex-1 overflow-hidden">
+          <div className="border-r p-4 overflow-y-auto" style={{ borderColor: 'var(--border)' }}>
+            <ComparePanel exec={execA} />
+          </div>
+          <div className="p-4 overflow-y-auto">
+            <ComparePanel exec={execB} />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
