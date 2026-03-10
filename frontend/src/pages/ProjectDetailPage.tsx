@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { projectsApi, suitesApi, testcasesApi, executionsApi, agentsApi, environmentsApi } from '../lib/api';
 import { formatDate, statusBadgeClass, statusLabel } from '../lib/utils';
-import { ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, TestTube2, Loader2, FolderOpen, Play, Pencil, PlayCircle, ClipboardList, Layers, Users, Tag, Search, X, ArrowRightLeft, Copy } from 'lucide-react';
+import { ArrowLeft, Plus, ChevronDown, ChevronRight, Trash2, TestTube2, Loader2, FolderOpen, Play, Pencil, PlayCircle, ClipboardList, Layers, Users, Tag, Search, X, ArrowRightLeft, Copy, CheckSquare, Square, ArrowRight } from 'lucide-react';
 
 export default function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -69,6 +69,20 @@ export default function ProjectDetailPage() {
   const [runSuiteModal, setRunSuiteModal] = useState<{ suiteId: string; suiteName: string } | null>(null);
   const [tagFilter, setTagFilter] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
+  const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
+  const [bulkSuiteCtx, setBulkSuiteCtx] = useState<string | null>(null); // which suite the selection belongs to
+
+  const toggleBulkSelect = (tcId: string, suiteId: string) => {
+    setBulkSuiteCtx(suiteId);
+    setBulkSelected(prev => {
+      const n = new Set(prev);
+      if (n.has(tcId)) { n.delete(tcId); if (n.size === 0) setBulkSuiteCtx(null); }
+      else { n.add(tcId); }
+      return n;
+    });
+  };
+
+  const clearBulk = () => { setBulkSelected(new Set()); setBulkSuiteCtx(null); };
 
   const toggleSuite = (id: string) => {
     setOpenSuites(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -109,6 +123,67 @@ export default function ProjectDetailPage() {
           </button>
         </div>
       </div>
+
+      {/* Bulk actions toolbar */}
+      {bulkSelected.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl border" style={{ background: 'var(--surface-2)', borderColor: 'var(--primary)' }}>
+          <CheckSquare className="w-4 h-4 text-blue-400 flex-shrink-0" />
+          <span className="text-sm font-medium" style={{ color: 'var(--text)' }}>
+            {bulkSelected.size} caso{bulkSelected.size !== 1 ? 's' : ''} selecionado{bulkSelected.size !== 1 ? 's' : ''}
+          </span>
+          <div className="flex items-center gap-2 ml-auto">
+            {/* Move bulk to another suite */}
+            {bulkSuiteCtx && suites.filter(s => s.id !== bulkSuiteCtx).length > 0 && (
+              <div className="relative group/bulk-move">
+                <button
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                >
+                  <ArrowRight className="w-3.5 h-3.5" /> Mover para
+                </button>
+                <div
+                  className="absolute right-0 top-full mt-1 hidden group-hover/bulk-move:block z-30 rounded-lg border shadow-xl min-w-[180px] overflow-hidden"
+                  style={{ background: 'var(--surface-2)', borderColor: 'var(--border)' }}
+                >
+                  {suites.filter(s => s.id !== bulkSuiteCtx).map((s: any) => (
+                    <button
+                      key={s.id}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-white/5 transition-colors truncate"
+                      style={{ color: 'var(--text)' }}
+                      onClick={async () => {
+                        for (const tcId of Array.from(bulkSelected)) {
+                          await moveTc.mutateAsync({ suiteId: bulkSuiteCtx!, tcId, targetSuiteId: s.id });
+                        }
+                        clearBulk();
+                      }}
+                    >{s.name}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Delete bulk */}
+            <button
+              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors"
+              onClick={async () => {
+                if (!confirm(`Excluir ${bulkSelected.size} caso${bulkSelected.size !== 1 ? 's' : ''} de teste?`)) return;
+                for (const tcId of Array.from(bulkSelected)) {
+                  await deleteTc.mutateAsync({ suiteId: bulkSuiteCtx!, tcId });
+                }
+                clearBulk();
+              }}
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Excluir
+            </button>
+            <button
+              className="text-xs px-2 py-1.5 rounded-lg transition-colors"
+              style={{ color: 'var(--text-muted)' }}
+              onClick={clearBulk}
+            >
+              <X className="w-3.5 h-3.5 inline mr-1" />Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Search + tag filter bar */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -185,6 +260,9 @@ export default function ProjectDetailPage() {
               creating={createTc.isPending}
               tagFilter={tagFilter}
               searchFilter={searchFilter}
+              bulkSelected={bulkSelected}
+              bulkSuiteCtx={bulkSuiteCtx}
+              onBulkToggle={toggleBulkSelect}
             />
           ))}
         </div>
@@ -407,7 +485,7 @@ function RunSuiteModal({ suiteId, suiteName, onClose }: { suiteId: string; suite
   );
 }
 
-function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onShowTcForm, tcTitle, onTcTitle, onCreateTc, onDeleteTc, onMoveTc, onDuplicateTc, otherSuites, onRunTc, onRunSuite, onEditTc, creating, tagFilter, searchFilter }: any) {
+function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onShowTcForm, tcTitle, onTcTitle, onCreateTc, onDeleteTc, onMoveTc, onDuplicateTc, otherSuites, onRunTc, onRunSuite, onEditTc, creating, tagFilter, searchFilter, bulkSelected, bulkSuiteCtx, onBulkToggle }: any) {
   const navigate = useNavigate();
   const { data } = useQuery({
     queryKey: ['testcases', suite.id],
@@ -494,7 +572,14 @@ function SuiteItem({ suite, open, onToggle, onDelete, onRename, showTcForm, onSh
                 onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
               >
-                <TestTube2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+                <button
+                  className="flex-shrink-0 p-0.5 rounded transition-colors"
+                  style={{ color: bulkSelected.has(tc.id) ? 'var(--primary)' : 'var(--text-muted)', opacity: (bulkSuiteCtx && bulkSuiteCtx !== suite.id) ? 0.3 : 1 }}
+                  title={bulkSelected.has(tc.id) ? 'Desselecionar' : 'Selecionar para ação em massa'}
+                  onClick={e => { e.stopPropagation(); if (!bulkSuiteCtx || bulkSuiteCtx === suite.id) onBulkToggle(tc.id, suite.id); }}
+                >
+                  {bulkSelected.has(tc.id) ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+                </button>
                 <span className="text-sm truncate" style={{ color: 'var(--text)' }}>{tc.title}</span>
                 {(() => {
                   const tags: string[] = typeof tc.tags === 'string' ? JSON.parse(tc.tags || '[]') : (tc.tags || []);

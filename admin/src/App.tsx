@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, NavLink, useNavigate } from 'react-router-dom';
-import { Users, Bot, Activity, LogOut } from 'lucide-react';
+import { Users, Bot, Activity, LogOut, ScrollText } from 'lucide-react';
 import LoginPage from './pages/LoginPage';
 import AgentsPage from './pages/AgentsPage';
 import UsersPage from './pages/UsersPage';
 import DashboardPage from './pages/DashboardPage';
+import LogsPage from './pages/LogsPage';
 
 function getUser() {
   try { return JSON.parse(localStorage.getItem('admin_user') || 'null'); } catch { return null; }
@@ -30,6 +31,7 @@ function Layout({ children }: { children: React.ReactNode }) {
     { to: '/dashboard', icon: Activity, label: 'Dashboard' },
     { to: '/agents', icon: Bot, label: 'Agentes' },
     { to: '/users', icon: Users, label: 'Usuários' },
+    { to: '/logs', icon: ScrollText, label: 'Logs' },
   ];
 
   return (
@@ -116,6 +118,7 @@ export default function App() {
         <Route path="/dashboard" element={<RequireAdmin><Layout><DashboardPage /></Layout></RequireAdmin>} />
         <Route path="/agents" element={<RequireAdmin><Layout><AgentsPage /></Layout></RequireAdmin>} />
         <Route path="/users" element={<RequireAdmin><Layout><UsersPage /></Layout></RequireAdmin>} />
+        <Route path="/logs" element={<RequireAdmin><Layout><LogsPage /></Layout></RequireAdmin>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

@@ -6,8 +6,8 @@ services:
       AGENT_TOKEN: 7bffb728-7bdb-49f5-9468-30bf6fea35f5-b61a63b7-c908-455d-bf14-780349bbfc56
       BACKEND_URL: http://host.docker.internal:4000
       NODE_ENV: production
-
       AGENT_MAX_CONCURRENT: 3
+      PLAYWRIGHT_BROWSERS_PATH: /root/.cache/ms-playwright
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

@@ -8,7 +8,7 @@ import { getDb } from '../../db/schema';
 import { authenticate, AuthRequest } from '../../shared/middleware/auth';
 import { logAudit } from '../../shared/audit';
 import { getIo } from '../../realtime/gateway';
-import { buildPayload } from '../integrations/integrations.routes';
+import { buildPayload, sendSmtpEmail } from '../integrations/integrations.routes';
 
 const router = Router();
 
@@ -154,7 +154,9 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
     io.to(`agent:${availableAgent.id}`).emit('exec:dispatch', runConfig);
   }
 
-  logAudit({ user_id: (req as AuthRequest).user?.id, action: 'create', entity: 'execution', entity_id: execution.id, detail: `TC: ${test_case_id || 'N/A'}`, ip: req.ip });
+  const tcForAudit = test_case_id ? db.prepare('SELECT title FROM test_cases WHERE id = ?').get(test_case_id) as any : null;
+  const auditDetail = tcForAudit?.title ? `TC: ${tcForAudit.title}` : (test_case_id ? `TC: ${test_case_id.slice(0, 8)}` : 'Script avulso');
+  logAudit({ user_id: (req as AuthRequest).user?.id, action: 'create', entity: 'execution', entity_id: execution.id, detail: auditDetail, ip: req.ip });
   res.status(201).json({ execution });
 });
 
@@ -238,29 +240,36 @@ router.patch('/:id/status', authenticateAgentOrUser, (req: Request, res: Respons
     db.prepare('UPDATE agents SET status = ? WHERE id = ?').run('online', execution.agent_id);
   }
 
-  const updated = db.prepare(`
+  const updatedExec = db.prepare(`
     SELECT e.*, tc.title as tc_title,
-      COALESCE(s.project_id, su.project_id) as project_id,
+      COALESCE(s.project_id, su.project_id, sch.project_id) as project_id,
       p.name as project_name
     FROM executions e
     LEFT JOIN test_cases tc ON tc.id = e.test_case_id
     LEFT JOIN suites su ON su.id = tc.suite_id
     LEFT JOIN scripts s ON s.id = e.script_id
-    LEFT JOIN projects p ON p.id = COALESCE(s.project_id, su.project_id)
+    LEFT JOIN schedules sch ON sch.id = e.schedule_id
+    LEFT JOIN projects p ON p.id = COALESCE(s.project_id, su.project_id, sch.project_id)
     WHERE e.id = ?
   `).get(req.params.id) as any;
 
   const io = getIo();
-  if (status === 'running') io.emit('exec:started', updated);
-  else if (finished) io.emit('exec:finished', updated);
-  else io.emit('exec:update', updated);
+  if (status === 'running') io.emit('exec:started', updatedExec);
+  else if (finished) io.emit('exec:finished', updatedExec);
+  else io.emit('exec:update', updatedExec);
 
   if (finished) {
-    fireWebhooks(db, status, updated, !!updated.schedule_id).catch(() => {});
+    fireWebhooks(db, status, updatedExec, !!updatedExec.schedule_id).catch((e: any) => {
+      console.error('[Webhook] PATCH path error:', e?.message || e);
+    });
   }
 
-  res.json({ execution: updated });
+  res.json({ execution: updatedExec });
 });
+
+export async function fireWebhooksFromGateway(db: any, status: string, exec: any, fromSchedule = false) {
+  return fireWebhooks(db, status, exec, fromSchedule);
+}
 
 async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = false) {
   const eventMap: Record<string, string> = {
@@ -270,6 +279,7 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
     running: 'execution.started',
   };
   const event = eventMap[status];
+  console.log(`[Webhook] fireWebhooks called — status=${status} event=${event} exec_id=${exec?.id} project_id=${exec?.project_id}`);
   if (!event) return;
 
   // Fetch integrations that match: enabled + (global OR same project)
@@ -283,6 +293,7 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
       `SELECT * FROM integrations WHERE enabled = 1 AND project_id IS NULL`
     ).all() as any[];
   }
+  console.log(`[Webhook] integrations found: ${integrations.length}`);
 
   for (const intg of integrations) {
     const events: string[] = (() => {
@@ -294,6 +305,7 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
         return (intg.events || '').trim().split(/\s+/).filter(Boolean);
       }
     })();
+    console.log(`[Webhook] intg=${intg.label} type=${intg.type} events=${JSON.stringify(events)} — match=${events.includes(event)}`);
     if (!events.includes(event)) continue;
 
     const flags = (() => { try { return JSON.parse(intg.include_flags || '{}'); } catch { return {}; } })();
@@ -330,7 +342,7 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
     let artifactFiles: Array<{ filename: string; path: string; size_bytes: number; url: string }> | undefined;
     if (flags.artifacts) {
       const arts = db.prepare(
-        `SELECT filename, path, size_bytes, url FROM execution_artifacts WHERE execution_id = ? ORDER BY created_at ASC`
+        `SELECT filename, path, size_bytes, url FROM exec_artifacts WHERE execution_id = ? ORDER BY created_at ASC`
       ).all(exec.id) as any[];
       if (arts.length > 0) {
         artifacts = arts.map((a: any) => a.filename);
@@ -349,19 +361,30 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
         detailed_report: detailedReport,
         artifacts,
       };
-      const payload = buildPayload(intg.type, webhookData);
-
-      // Discord: send files as multipart attachments if artifacts exist and files are present
-      if (intg.type === 'discord' && artifactFiles && artifactFiles.length > 0) {
-        await sendDiscordWithFiles(intg.webhook_url, payload, artifactFiles);
+      if (intg.type === 'smtp') {
+        const smtpCfg = (() => { try { return JSON.parse(intg.smtp_config || '{}'); } catch { return {}; } })();
+        await sendSmtpEmail(smtpCfg, webhookData, false);
+        console.log(`[Webhook] ${intg.label} e-mail SMTP enviado com sucesso`);
       } else {
-        await fetch(intg.webhook_url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        const payload = buildPayload(intg.type, webhookData);
+        if (intg.type === 'discord' && artifactFiles && artifactFiles.length > 0) {
+          await sendDiscordWithFiles(intg.webhook_url, payload, artifactFiles);
+        } else {
+          const resp = await fetch(intg.webhook_url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+          if (!resp.ok) {
+            const body = await resp.text().catch(() => '');
+            console.error(`[Webhook] ${intg.label} respondeu HTTP ${resp.status}: ${body.slice(0, 300)}`);
+          } else {
+            console.log(`[Webhook] ${intg.label} disparado com sucesso (HTTP ${resp.status})`);
+          }
+        }
       }
-    } catch (_err) {
+    } catch (_err: any) {
+      console.error(`[Webhook] ERRO ao disparar ${intg.label}:`, _err?.message || _err);
     }
   }
 }
@@ -383,11 +406,13 @@ async function sendDiscordWithFiles(
 
   if (sendable.length === 0) {
     // No local files available — fall back to plain JSON
-    await fetch(webhookUrl, {
+    const r = await fetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    if (!r.ok) { const b = await r.text().catch(() => ''); console.error(`[Webhook/Discord] fallback HTTP ${r.status}: ${b.slice(0,300)}`); }
+    else console.log(`[Webhook/Discord] fallback enviado OK (HTTP ${r.status})`);
     return;
   }
 
@@ -406,7 +431,9 @@ async function sendDiscordWithFiles(
     form.append(`files[${i}]`, new Blob([buffer], { type: mimeType }), a.filename);
   }
 
-  await fetch(webhookUrl, { method: 'POST', body: form });
+  const dr = await fetch(webhookUrl, { method: 'POST', body: form });
+  if (!dr.ok) { const b = await dr.text().catch(() => ''); console.error(`[Webhook/Discord] multipart HTTP ${dr.status}: ${b.slice(0,300)}`); }
+  else console.log(`[Webhook/Discord] multipart enviado OK (HTTP ${dr.status}) — ${sendable.length} arquivo(s)`);
 }
 
 export default router;

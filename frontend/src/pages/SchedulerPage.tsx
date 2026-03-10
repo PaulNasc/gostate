@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { schedulesApi, projectsApi, agentsApi, environmentsApi, testPlansApi } from '../lib/api';
-import { formatDate } from '../lib/utils';
-import { Plus, Clock, Trash2, Loader2, ToggleLeft, ToggleRight, CalendarClock, PlayCircle, ChevronRight, Pencil, Check, X } from 'lucide-react';
+import { schedulesApi, projectsApi, agentsApi, environmentsApi, testPlansApi, executionsApi } from '../lib/api';
+import { formatDate, formatDuration, statusBadgeClass, statusLabel } from '../lib/utils';
+import { Plus, Clock, Trash2, Loader2, ToggleLeft, ToggleRight, CalendarClock, PlayCircle, ChevronRight, Pencil, Check, X, History, ExternalLink, Play } from 'lucide-react';
 import { useToast } from '../components/Toast';
+import { useNavigate } from 'react-router-dom';
 
 const CRON_PRESETS = [
   { label: 'A cada 5 min', value: '*/5 * * * *' },
@@ -49,14 +50,87 @@ function nextRunFromCron(cronExpr: string, lastRun?: string): string {
   }
 }
 
+function ScheduleHistoryDrawer({ schedule, onClose }: { schedule: any; onClose: () => void }) {
+  const navigate = useNavigate();
+  const { data, isLoading } = useQuery({
+    queryKey: ['schedule-history', schedule.id],
+    queryFn: () => {
+      const params: any = { limit: 30 };
+      if (schedule.test_plan_id) params.test_plan_id = schedule.test_plan_id;
+      else if (schedule.project_id) params.project_id = schedule.project_id;
+      return executionsApi.list(params);
+    },
+    refetchInterval: 10000,
+  });
+  const execs: any[] = data?.data?.executions || [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="flex-1" />
+      <div
+        className="w-full max-w-md h-full border-l flex flex-col"
+        style={{ background: 'var(--surface-1)', borderColor: 'var(--border)' }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
+          <div>
+            <h3 className="font-bold text-sm" style={{ color: 'var(--text)' }}>{schedule.label}</h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Últimas 30 execuções deste agendamento</p>
+          </div>
+          <button className="btn-ghost p-1.5" onClick={onClose}><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-5 h-5 animate-spin text-slate-500" />
+            </div>
+          ) : execs.length === 0 ? (
+            <div className="py-12 text-center">
+              <History className="w-8 h-8 mx-auto mb-3 text-slate-600" />
+              <p className="text-sm text-slate-500">Nenhuma execução encontrada</p>
+              <p className="text-xs text-slate-600 mt-1">As execuções agendadas aparecerão aqui</p>
+            </div>
+          ) : (
+            <div className="divide-y" style={{ borderColor: 'var(--border)' }}>
+              {execs.map((exec: any) => (
+                <div
+                  key={exec.id}
+                  className="flex items-center gap-3 px-5 py-3 cursor-pointer transition-colors"
+                  onMouseEnter={e => (e.currentTarget.style.background = 'var(--surface-2)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  onClick={() => { onClose(); navigate(`/executions/${exec.id}`); }}
+                >
+                  <span className={`${statusBadgeClass(exec.status)} flex-shrink-0 text-xs`}>{statusLabel(exec.status)}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs truncate" style={{ color: 'var(--text)' }}>
+                      {exec.tc_title || exec.script_filename || `#${exec.id.slice(0, 8)}`}
+                    </p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      {formatDate(exec.created_at)}{exec.duration_ms ? ` · ${formatDuration(exec.duration_ms)}` : ''}
+                    </p>
+                  </div>
+                  <ExternalLink className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function SchedulerPage() {
   const qc = useQueryClient();
   const toast = useToast();
+  const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [customCron, setCustomCron] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [editCron, setEditCron] = useState('');
+  const [historySchedule, setHistorySchedule] = useState<any | null>(null);
   const [form, setForm] = useState({
     label: '',
     mode: 'tc' as 'tc' | 'plan',
@@ -140,8 +214,26 @@ export default function SchedulerPage() {
   const cancelEdit = () => setEditingId(null);
   const commitEdit = (id: string) => { if (editLabel.trim() && editCron.trim()) updateSchedule.mutate({ id, label: editLabel.trim(), cron: editCron.trim() }); };
 
+  const runNow = useMutation({
+    mutationFn: (s: any) => {
+      if (s.test_plan_id) {
+        return import('../lib/api').then(m => m.testPlansApi.run(s.test_plan_id));
+      }
+      return executionsApi.create({
+        project_id: s.project_id || undefined,
+        test_case_id: s.test_case_id || undefined,
+        agent_id: s.agent_id || undefined,
+        browsers: s.browsers ? JSON.parse(s.browsers) : ['chromium'],
+        triggered_by: 'manual',
+      });
+    },
+    onSuccess: () => { toast.success('Execução iniciada manualmente'); qc.invalidateQueries({ queryKey: ['schedules'] }); },
+    onError: () => toast.error('Erro ao iniciar execução'),
+  });
+
   return (
     <div className="p-6 space-y-6">
+      {historySchedule && <ScheduleHistoryDrawer schedule={historySchedule} onClose={() => setHistorySchedule(null)} />}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -396,6 +488,21 @@ export default function SchedulerPage() {
                         </>
                       ) : (
                         <>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-green-500/10 hover:text-green-400 transition-all" style={{ color: 'var(--text-muted)' }}
+                            onClick={() => runNow.mutate(s)}
+                            title="Executar agora"
+                            disabled={runNow.isPending}
+                          >
+                            <Play className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-slate-500/10 transition-all" style={{ color: 'var(--text-muted)' }}
+                            onClick={() => setHistorySchedule(s)}
+                            title="Ver histórico"
+                          >
+                            <History className="w-3.5 h-3.5" />
+                          </button>
                           <button
                             className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-blue-500/10 hover:text-blue-400 transition-all" style={{ color: 'var(--text-muted)' }}
                             onClick={() => startEdit(s)}

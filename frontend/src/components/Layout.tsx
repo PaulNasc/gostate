@@ -133,7 +133,7 @@ const navItems = [
   { to: '/integrations', Icon: IconIntegrations, label: 'Integrações' },
   { to: '/agents',       Icon: IconAgents,       label: 'Agentes' },
   { to: '/users',        Icon: IconUsers,        label: 'Usuários', adminOnly: true },
-  { to: '/audit',        Icon: IconAudit,        label: 'Auditoria', adminOnly: true },
+  { to: '/audit',        Icon: IconAudit,        label: 'Logs', adminOnly: true },
 ];
 
 export default function Layout() {

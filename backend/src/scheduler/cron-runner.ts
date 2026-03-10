@@ -103,11 +103,20 @@ function runDueSchedules() {
 
     const id = uuidv4();
 
+    // Resolve script_id from schedule's project if no test_case_id
+    // so that fireWebhooks can JOIN back to the project correctly via script.project_id
+    const schedScriptId: string | null = (() => {
+      if (sched.test_case_id) return null;
+      if (!sched.project_id) return null;
+      const s = db.prepare('SELECT id FROM scripts WHERE project_id = ? ORDER BY created_at DESC LIMIT 1').get(sched.project_id) as any;
+      return s?.id || null;
+    })();
+
     const dispatchSingle = db.transaction(() => {
       db.prepare(`
-        INSERT INTO executions (id, test_case_id, agent_id, triggered_by, status, video_enabled, browsers, created_at, schedule_id)
-        VALUES (?, ?, ?, ?, 'queued', 0, ?, ?, ?)
-      `).run(id, sched.test_case_id || null, agent.id, adminUser.id, browsersJson, now, sched.id);
+        INSERT INTO executions (id, test_case_id, script_id, agent_id, triggered_by, status, video_enabled, browsers, created_at, schedule_id)
+        VALUES (?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?)
+      `).run(id, sched.test_case_id || null, schedScriptId || null, agent.id, adminUser.id, browsersJson, now, sched.id);
 
       db.prepare('UPDATE schedules SET last_run = ? WHERE id = ?').run(now, sched.id);
       db.prepare("UPDATE agents SET status = 'busy' WHERE id = ?").run(agent.id);

@@ -393,6 +393,29 @@ function runMigrations(db: Database.Database): void {
   };
   migrations.push(v12);
 
+  const v14: any = {
+    version: 14,
+    sql: `
+      CREATE TABLE IF NOT EXISTS integrations_new (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL CHECK(type IN ('discord','slack','teams','webhook','telegram','pagerduty','smtp')),
+        label TEXT NOT NULL,
+        webhook_url TEXT NOT NULL DEFAULT '',
+        events TEXT NOT NULL DEFAULT '["execution.failed"]',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+        include_flags TEXT NOT NULL DEFAULT '{}',
+        smtp_config TEXT NOT NULL DEFAULT '{}'
+      );
+      INSERT INTO integrations_new SELECT id, type, label, webhook_url, events, enabled, created_at, updated_at, project_id, include_flags, '{}' FROM integrations;
+      DROP TABLE integrations;
+      ALTER TABLE integrations_new RENAME TO integrations;
+    `
+  };
+  migrations.push(v14);
+
   // v13: fix integrations.events stored as space-separated string instead of JSON array
   const v13: any = { version: 13, sql: `SELECT 1` }; // no-op SQL, logic runs below
   if (!applied.includes(13)) {

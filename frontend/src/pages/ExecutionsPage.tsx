@@ -6,7 +6,7 @@ import { formatDate, formatDuration, statusBadgeClass, statusLabel } from '../li
 import {
   PlayCircle, RefreshCw, X, Loader2, ExternalLink,
   CheckCircle2, XCircle, Clock, AlertCircle, ChevronsLeft, ChevronLeft, ChevronRight,
-  RotateCcw, Columns2,
+  RotateCcw, Columns2, Download, CalendarDays,
 } from 'lucide-react';
 import { io as socketIo } from 'socket.io-client';
 import { useToast } from '../components/Toast';
@@ -43,6 +43,8 @@ export default function ExecutionsPage() {
   const [pageSize, setPageSize] = useState<number>(9);
   const [compareSet, setCompareSet] = useState<Set<string>>(new Set());
   const [showCompare, setShowCompare] = useState(false);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const toggleCompare = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -70,12 +72,24 @@ export default function ExecutionsPage() {
   // Apply filters
   const filtered = sorted
     .filter(e => filterStatus === 'all' || e.status === filterStatus)
-    .filter(e => !filterProject || e.project_id === filterProject);
+    .filter(e => !filterProject || e.project_id === filterProject)
+    .filter(e => {
+      if (!dateFrom && !dateTo) return true;
+      const d = new Date(e.created_at?.includes('T') ? e.created_at : e.created_at?.replace(' ', 'T') + 'Z');
+      if (isNaN(d.getTime())) return true;
+      if (dateFrom && d < new Date(dateFrom)) return false;
+      if (dateTo) {
+        const end = new Date(dateTo);
+        end.setHours(23, 59, 59, 999);
+        if (d > end) return false;
+      }
+      return true;
+    });
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
 
   // Reset to page 1 when filters or pageSize change
-  useEffect(() => { setPage(1); }, [filterStatus, filterProject, pageSize]);
+  useEffect(() => { setPage(1); }, [filterStatus, filterProject, pageSize, dateFrom, dateTo]);
   // Clamp page if total pages shrinks
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
 
@@ -121,6 +135,28 @@ export default function ExecutionsPage() {
   });
 
   const failedCount = filtered.filter(e => e.status === 'failed' || e.status === 'error').length;
+
+  const exportCSV = () => {
+    const headers = ['ID', 'Status', 'Caso / Script', 'Projeto', 'Browser', 'Agente', 'Duração (ms)', 'Iniciado'];
+    const rows = filtered.map(e => [
+      e.id,
+      e.status,
+      e.tc_title || e.script_filename || '',
+      e.project_name || '',
+      (() => { try { return JSON.parse(e.browsers)?.[0] || ''; } catch { return e.browsers || ''; } })(),
+      e.agent_name || '',
+      e.duration_ms ?? '',
+      e.created_at || '',
+    ]);
+    const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `execucoes_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   useEffect(() => {
     const token = localStorage.getItem('gostate:token');
@@ -183,6 +219,14 @@ export default function ExecutionsPage() {
               Re-executar falhos ({failedCount})
             </button>
           )}
+          <button
+            className="flex items-center gap-2 text-sm px-3 py-1.5 rounded-lg border transition-colors"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+            onClick={exportCSV}
+            title="Exportar lista filtrada como CSV"
+          >
+            <Download className="w-3.5 h-3.5" /> CSV
+          </button>
           <button className="btn-ghost flex items-center gap-2 text-sm" onClick={() => refetch()}>
             <RefreshCw className="w-3.5 h-3.5" /> Atualizar
           </button>
@@ -216,22 +260,46 @@ export default function ExecutionsPage() {
         </div>
       )}
 
-      {/* Project filter */}
-      {projects.length > 0 && (
-        <div className="flex items-center gap-2 flex-shrink-0">
+      {/* Filters row: project + date range */}
+      <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+        {projects.length > 0 && (
           <select
-            className="input text-sm py-1.5 px-3 w-56"
+            className="input text-sm py-1.5 px-3 w-52"
             value={filterProject}
             onChange={e => setFilterProject(e.target.value)}
           >
             <option value="">Todos os projetos</option>
             {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          {filterProject && (
-            <button className="text-xs transition-colors" style={{ color: 'var(--text-muted)' }} onClick={() => setFilterProject('')}>Limpar</button>
-          )}
+        )}
+        <div className="flex items-center gap-1.5">
+          <CalendarDays className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+          <input
+            type="date"
+            className="input text-xs py-1.5 px-2 w-36"
+            value={dateFrom}
+            onChange={e => setDateFrom(e.target.value)}
+            title="Data de início"
+          />
+          <span className="text-xs" style={{ color: 'var(--text-muted)' }}>até</span>
+          <input
+            type="date"
+            className="input text-xs py-1.5 px-2 w-36"
+            value={dateTo}
+            onChange={e => setDateTo(e.target.value)}
+            title="Data de fim"
+          />
         </div>
-      )}
+        {(filterProject || dateFrom || dateTo) && (
+          <button
+            className="text-xs transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+            onClick={() => { setFilterProject(''); setDateFrom(''); setDateTo(''); }}
+          >
+            Limpar filtros
+          </button>
+        )}
+      </div>
 
       {/* Filter tabs */}
       <div className="flex gap-1 border-b flex-shrink-0" style={{ borderColor: 'var(--border)' }}>

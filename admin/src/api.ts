@@ -49,4 +49,9 @@ export const healthApi = {
   get: () => api.get('/api/health'),
 };
 
+export const auditApi = {
+  list: (params?: { entity?: string; action?: string; user_id?: string; limit?: number; offset?: number }) =>
+    api.get('/api/audit', { params }),
+};
+
 export default api;

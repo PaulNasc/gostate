@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { statsApi, executionsApi, API_BASE } from '../lib/api';
 import { formatDate, formatDuration, statusBadgeClass, statusLabel } from '../lib/utils';
-import { FolderOpen, PlayCircle, Server, TrendingUp, TestTube2, Layers, Loader2, ArrowRight, Zap } from 'lucide-react';
+import { FolderOpen, PlayCircle, Server, TrendingUp, TestTube2, Layers, Loader2, ArrowRight, Zap, Timer } from 'lucide-react';
 import { io as socketIo } from 'socket.io-client';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -33,6 +33,31 @@ export default function DashboardPage() {
     refetchInterval: 60000,
   });
   const flakyExecs: any[] = flakyData?.data?.executions || [];
+
+  // Avg duration per project over last 7 days
+  const avgByProject = (() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+    const byProject: Record<string, { name: string; durations: number[] }> = {};
+    flakyExecs.forEach(e => {
+      if (!e.project_id || !e.project_name || !e.duration_ms || e.duration_ms <= 0) return;
+      if (!['passed', 'failed', 'error'].includes(e.status)) return;
+      const d = new Date(e.created_at?.includes('T') ? e.created_at : e.created_at?.replace(' ', 'T') + 'Z');
+      if (isNaN(d.getTime()) || d < cutoff) return;
+      if (!byProject[e.project_id]) byProject[e.project_id] = { name: e.project_name, durations: [] };
+      byProject[e.project_id].durations.push(e.duration_ms);
+    });
+    return Object.entries(byProject)
+      .map(([id, { name, durations }]) => ({
+        id,
+        name,
+        avg: Math.round(durations.reduce((a, b) => a + b, 0) / durations.length),
+        count: durations.length,
+      }))
+      .filter(p => p.count >= 2)
+      .sort((a, b) => b.avg - a.avg)
+      .slice(0, 5);
+  })();
 
   const flakyTcs = (() => {
     const byTc: Record<string, { title: string; statuses: string[] }> = {};
@@ -179,33 +204,67 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Flakiness Widget */}
-      {flakyTcs.length > 0 && (
-        <div className="card p-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Zap className="w-4 h-4 text-amber-400" />
-            <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Top Casos Flaky</h2>
-            <span className="text-xs ml-1" style={{ color: 'var(--text-muted)' }}>instabilidade nos últimos runs</span>
-          </div>
-          <div className="space-y-2">
-            {flakyTcs.map(tc => (
-              <div key={tc.id} className="flex items-center gap-3">
-                <span className="text-xs truncate flex-1" style={{ color: 'var(--text)' }} title={tc.title}>{tc.title}</span>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{ width: `${Math.round(tc.score * 100)}%`, background: tc.score > 0.6 ? '#ef4444' : tc.score > 0.4 ? '#f59e0b' : '#eab308' }}
-                    />
-                  </div>
-                  <span className="text-xs font-mono w-8 text-right" style={{ color: tc.score > 0.6 ? '#f87171' : tc.score > 0.4 ? '#fbbf24' : '#a3e635' }}>
-                    {Math.round(tc.score * 100)}%
-                  </span>
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{tc.total} runs</span>
-                </div>
+      {/* Avg Duration + Flakiness — side by side */}
+      {(avgByProject.length > 0 || flakyTcs.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {avgByProject.length > 0 && (
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Timer className="w-4 h-4 text-cyan-400" />
+                <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Tempo médio por projeto</h2>
+                <span className="text-xs ml-1" style={{ color: 'var(--text-muted)' }}>últimos 7 dias</span>
               </div>
-            ))}
-          </div>
+              <div className="space-y-2">
+                {avgByProject.map((proj, i) => {
+                  const maxAvg = avgByProject[0].avg;
+                  const pct = maxAvg > 0 ? Math.round((proj.avg / maxAvg) * 100) : 0;
+                  const secs = (proj.avg / 1000).toFixed(1);
+                  return (
+                    <div key={proj.id} className="flex items-center gap-3">
+                      <span className="text-xs flex-shrink-0 w-5 text-right font-semibold" style={{ color: 'var(--text-muted)' }}>{i + 1}</span>
+                      <span className="text-xs truncate flex-1" style={{ color: 'var(--text)' }} title={proj.name}>{proj.name}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="w-20 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+                          <div className="h-full rounded-full transition-all bg-cyan-500" style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-xs font-mono w-10 text-right" style={{ color: 'var(--text)' }}>{secs}s</span>
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{proj.count}x</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {flakyTcs.length > 0 && (
+            <div className="card p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Zap className="w-4 h-4 text-amber-400" />
+                <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Top Casos Flaky</h2>
+                <span className="text-xs ml-1" style={{ color: 'var(--text-muted)' }}>instabilidade nos últimos runs</span>
+              </div>
+              <div className="space-y-2">
+                {flakyTcs.map(tc => (
+                  <div key={tc.id} className="flex items-center gap-3">
+                    <span className="text-xs truncate flex-1" style={{ color: 'var(--text)' }} title={tc.title}>{tc.title}</span>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <div className="w-24 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{ width: `${Math.round(tc.score * 100)}%`, background: tc.score > 0.6 ? '#ef4444' : tc.score > 0.4 ? '#f59e0b' : '#eab308' }}
+                        />
+                      </div>
+                      <span className="text-xs font-mono w-8 text-right" style={{ color: tc.score > 0.6 ? '#f87171' : tc.score > 0.4 ? '#fbbf24' : '#a3e635' }}>
+                        {Math.round(tc.score * 100)}%
+                      </span>
+                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{tc.total} runs</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

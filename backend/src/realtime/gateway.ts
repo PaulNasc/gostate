@@ -3,6 +3,7 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../shared/middleware/auth';
 import { getDb } from '../db/schema';
+import { fireWebhooksFromGateway } from '../modules/executions/executions.routes';
 
 let io: SocketServer;
 
@@ -64,12 +65,54 @@ export function initSocket(server: HttpServer): SocketServer {
 
       const db = getDb();
 
-      // On reconnect: reset any stale executions this agent left in running/queued state
-      const stuckCount = (db.prepare("SELECT COUNT(*) as n FROM executions WHERE agent_id = ? AND status IN ('running','queued')").get(agentId) as any)?.n ?? 0;
-      if (stuckCount > 0) {
-        console.log(`[Socket] Agente ${agentName} reconectado — resetando ${stuckCount} execuções presas`);
-        db.prepare("UPDATE executions SET status = 'error', logs = COALESCE(logs,'') || '\n[AGENTE RECONECTOU — EXECUÇÃO INTERROMPIDA]' WHERE agent_id = ? AND status IN ('running','queued')").run(agentId);
+      // On reconnect: reset running executions (truly interrupted), but re-dispatch queued ones from last 30min
+      const stuckRunning = db.prepare(
+        "SELECT COUNT(*) as n FROM executions WHERE agent_id = ? AND status = 'running'"
+      ).get(agentId) as any;
+      if ((stuckRunning?.n ?? 0) > 0) {
+        console.log(`[Socket] Agente ${agentName} reconectado — resetando ${stuckRunning.n} execuções running presas`);
+        db.prepare("UPDATE executions SET status = 'error', logs = COALESCE(logs,'') || '\n[AGENTE RECONECTOU — EXECUÇÃO INTERROMPIDA]' WHERE agent_id = ? AND status = 'running'").run(agentId);
         io.emit('exec:update', { agentId });
+      }
+
+      // Re-dispatch queued executions from last 30 min
+      const queuedExecs = db.prepare(`
+        SELECT e.id, e.test_case_id, e.script_id, e.video_enabled, e.browsers
+        FROM executions e
+        WHERE e.agent_id = ? AND e.status = 'queued'
+          AND (julianday('now') - julianday(e.created_at)) * 1440 <= 30
+        ORDER BY e.created_at ASC
+      `).all(agentId) as any[];
+
+      if (queuedExecs.length > 0) {
+        console.log(`[Socket] Agente ${agentName} reconectado — redespatching ${queuedExecs.length} execuções queued`);
+        for (const exec of queuedExecs) {
+          let scriptContent = '';
+          let tcSteps: any[] = [];
+          if (exec.script_id) {
+            const script = db.prepare('SELECT content FROM scripts WHERE id = ?').get(exec.script_id) as any;
+            if (script) scriptContent = script.content || '';
+          }
+          if (exec.test_case_id) {
+            const tc = db.prepare('SELECT steps FROM test_cases WHERE id = ?').get(exec.test_case_id) as any;
+            if (tc) { try { tcSteps = JSON.parse(tc.steps || '[]'); } catch {} }
+          }
+          const browsers = (() => { try { return JSON.parse(exec.browsers || '["chromium"]'); } catch { return ['chromium']; } })();
+          socket.emit('exec:dispatch', {
+            execId: exec.id,
+            test_case_id: exec.test_case_id || null,
+            script_id: exec.script_id || null,
+            scriptContent,
+            steps: tcSteps,
+            framework: 'playwright',
+            language: 'js',
+            browsers,
+            videoEnabled: !!exec.video_enabled,
+            timeout: 60000,
+            backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
+          });
+          console.log(`[Socket] Re-dispatch: ${exec.id} → agente ${agentName}`);
+        }
       }
 
       db.prepare("UPDATE agents SET status = ?, last_heartbeat = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?").run('online', agentId);
@@ -134,7 +177,7 @@ export function initSocket(server: HttpServer): SocketServer {
             // Save step results if provided
             if (steps && steps.length > 0) {
               const insertStep = db.prepare(`
-                INSERT OR IGNORE INTO execution_steps
+                INSERT OR IGNORE INTO exec_steps
                   (id, execution_id, step_index, name, type, status, duration_ms, error_message, timestamp_ms)
                 VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?, ?, ?, ?)
               `);
@@ -147,6 +190,24 @@ export function initSocket(server: HttpServer): SocketServer {
             // Free the agent
             if (execution.agent_id) {
               db.prepare("UPDATE agents SET status = 'online' WHERE id = ?").run(execution.agent_id);
+            }
+
+            // Fire webhooks (same as HTTP PATCH path)
+            const updatedExec = db.prepare(`
+              SELECT e.*, tc.title as tc_title,
+                COALESCE(s.project_id, su.project_id) as project_id,
+                p.name as project_name
+              FROM executions e
+              LEFT JOIN test_cases tc ON tc.id = e.test_case_id
+              LEFT JOIN suites su ON su.id = tc.suite_id
+              LEFT JOIN scripts s ON s.id = e.script_id
+              LEFT JOIN projects p ON p.id = COALESCE(s.project_id, su.project_id)
+              WHERE e.id = ?
+            `).get(execId) as any;
+            if (updatedExec) {
+              fireWebhooksFromGateway(db, status, updatedExec, !!updatedExec.schedule_id).catch((e: any) => {
+                console.error('[Socket] fireWebhooks error:', e?.message || e);
+              });
             }
 
             io.emit('exec:finished', { id: execId, status });

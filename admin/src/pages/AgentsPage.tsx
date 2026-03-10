@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bot, Plus, Trash2, RefreshCw, Copy, CheckCircle2, Loader2, Wifi, WifiOff, KeyRound, AlertTriangle, Settings2, Terminal, Activity, Cloud, Monitor, Server, Package, ChevronRight, ChevronLeft, Rocket, X } from 'lucide-react';
+import { Bot, Plus, Trash2, RefreshCw, Copy, CheckCircle2, Loader2, Wifi, WifiOff, AlertTriangle, Settings2, Terminal, Activity, Cloud, Monitor, Server, Package, ChevronRight, ChevronLeft, Rocket, X, PlugZap } from 'lucide-react';
 import { agentsApi } from '../api';
 
 function formatDate(d: string | null | undefined) {
@@ -423,6 +423,7 @@ export default function AgentsPage() {
   const [wizard, setWizard] = useState<{ agent: any; token: string } | null>(null);
   const [checkingId, setCheckingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [wizardLoadingId, setWizardLoadingId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const showToast = (msg: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -456,6 +457,18 @@ export default function AgentsPage() {
     onError: () => showToast('Erro ao remover agente', 'error'),
   });
 
+  const openWizard = async (agent: any) => {
+    setWizardLoadingId(agent.id);
+    try {
+      const res = await agentsApi.getToken(agent.id);
+      setWizard({ agent, token: res.data.token });
+    } catch {
+      showToast('Erro ao buscar token do agente', 'error');
+    } finally {
+      setWizardLoadingId(null);
+    }
+  };
+
   const checkStatus = async (id: string) => {
     setCheckingId(id);
     try {
@@ -471,24 +484,27 @@ export default function AgentsPage() {
     }
   };
 
+  const STATUS_CFG = {
+    online:  { label: 'Online',     dot: 'bg-green-400',  ping: 'bg-green-400',  iconCls: 'text-green-400',  iconBg: 'rgba(34,197,94,0.15)',   border: '#22c55e45' },
+    busy:    { label: 'Executando', dot: 'bg-yellow-400', ping: 'bg-yellow-400', iconCls: 'text-yellow-400', iconBg: 'rgba(234,179,8,0.15)',   border: '#eab30845' },
+    offline: { label: 'Offline',    dot: 'bg-slate-600',  ping: '',              iconCls: 'text-slate-500',  iconBg: 'rgba(100,116,139,0.15)', border: '#47556945' },
+  } as const;
+
+  const CARD_H = '220px';
+
   return (
-    <div className="p-6 space-y-6 max-w-4xl">
+    <div className="p-6 space-y-6 w-full">
       {wizard && (
-        <DeployWizard
-          agent={wizard.agent}
-          token={wizard.token}
-          onClose={() => setWizard(null)}
-        />
+        <DeployWizard agent={wizard.agent} token={wizard.token} onClose={() => setWizard(null)} />
       )}
+
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-xl transition-all ${
           toast.type === 'success' ? 'bg-green-500/20 text-green-300 border border-green-500/30' :
-          toast.type === 'error' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
+          toast.type === 'error'   ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
           'bg-blue-500/20 text-blue-300 border border-blue-500/30'
-        }`}>
-          {toast.msg}
-        </div>
+        }`}>{toast.msg}</div>
       )}
 
       {/* Header */}
@@ -497,14 +513,18 @@ export default function AgentsPage() {
           <h1 className="text-xl font-bold text-white flex items-center gap-2">
             <Bot className="w-5 h-5 text-violet-400" /> Gerenciar Agentes
           </h1>
-          <p className="text-sm text-slate-400 mt-1">Cadastre, monitore e revogue tokens de agentes remotos</p>
+          <p className="text-sm text-slate-400 mt-1">
+            {agents.filter(a => a.status === 'online').length} online ·{' '}
+            {agents.filter(a => a.status === 'busy').length} executando ·{' '}
+            {agents.filter(a => a.status === 'offline').length} offline
+          </p>
         </div>
         <button className="btn-primary flex items-center gap-2" onClick={() => setShowForm(!showForm)}>
           <Plus className="w-4 h-4" /> Novo Agente
         </button>
       </div>
 
-      {/* Form */}
+      {/* New agent form */}
       {showForm && (
         <div className="card p-4 space-y-3">
           <h3 className="text-sm font-semibold text-white">Registrar Novo Agente</h3>
@@ -514,8 +534,8 @@ export default function AgentsPage() {
               className="input flex-1"
               placeholder="Nome do agente (ex: agente-docker-01)"
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && name.trim() && create.mutate()}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && name.trim() && create.mutate()}
               autoFocus
             />
             <button className="btn-primary flex items-center gap-2" disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>
@@ -526,7 +546,7 @@ export default function AgentsPage() {
         </div>
       )}
 
-      {/* Agents list */}
+      {/* Agents grid */}
       {isLoading ? (
         <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-slate-500" /></div>
       ) : agents.length === 0 ? (
@@ -536,104 +556,171 @@ export default function AgentsPage() {
           <p className="text-sm text-slate-600 mt-1">Crie um agente para começar a executar testes remotamente</p>
         </div>
       ) : (
-        <div className="space-y-3">
-          {agents.map((agent) => (
-            <div key={agent.id} className="space-y-0">
-              <div className="card p-4">
-                <div className="flex items-center gap-4">
-                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                    agent.status === 'online' ? 'bg-green-500/15' :
-                    agent.status === 'busy' ? 'bg-yellow-500/15' : 'bg-slate-700/40'
-                  }`}>
-                    {agent.status === 'online'
-                      ? <Wifi className="w-4 h-4 text-green-400" />
-                      : agent.status === 'busy'
-                      ? <Activity className="w-4 h-4 text-yellow-400" />
-                      : <WifiOff className="w-4 h-4 text-slate-500" />}
-                  </div>
+        <>
+          <style>{`
+            .adm-agent-flip { perspective: 1000px; }
+            .adm-agent-flip-inner { position: relative; width: 100%; height: 100%; transition: transform 0.55s cubic-bezier(.4,0,.2,1); transform-style: preserve-3d; }
+            .adm-agent-flip:not(.is-expanded):hover .adm-agent-flip-inner { transform: rotateY(180deg); }
+            .adm-agent-flip.is-expanded .adm-agent-flip-inner { transform: rotateY(180deg); }
+            .adm-agent-front, .adm-agent-back { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 0.75rem; }
+            .adm-agent-back { transform: rotateY(180deg); }
+          `}</style>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-white text-sm">{agent.name}</span>
-                      <span className={`badge ${
-                        agent.status === 'online' ? 'badge-online' :
-                        agent.status === 'busy' ? 'badge-busy' : 'badge-offline'
-                      }`}>
-                        {agent.status === 'online' ? 'Online' : agent.status === 'busy' ? 'Executando' : 'Offline'}
-                      </span>
-                      {agent.deploy_config && (agent.deploy_config as any)?.backend_url && (
-                        <span className="text-xs text-slate-600 font-mono">{(agent.deploy_config as any).backend_url}</span>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      <div className="flex items-center gap-4 flex-wrap">
-                        <span><span className="text-slate-600">ID:</span> {agent.id.slice(0, 8)}…</span>
-                        <span><span className="text-slate-600">Heartbeat:</span> {agent.last_heartbeat ? `${formatDate(agent.last_heartbeat)} (${timeSince(agent.last_heartbeat)})` : 'nunca'}</span>
-                        {agent.deploy_config && (agent.deploy_config as any)?.notes && (
-                          <span className="text-slate-600 italic">{(agent.deploy_config as any).notes}</span>
-                        )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {agents.map(agent => {
+              const cfg = STATUS_CFG[agent.status as keyof typeof STATUS_CFG] || STATUS_CFG.offline;
+              const dc  = typeof agent.deploy_config === 'string' ? JSON.parse(agent.deploy_config || '{}') : (agent.deploy_config || {});
+              const caps = agent.capabilities || {};
+              const browsers: string[]   = caps.browsers   || [];
+              const frameworks: string[] = caps.frameworks || [];
+              const isExpanded = expandedId === agent.id;
+
+              return (
+                <div key={agent.id} className="space-y-2">
+                  <div
+                    className={`adm-agent-flip ${isExpanded ? 'is-expanded' : ''}`}
+                    style={{ height: CARD_H, minHeight: CARD_H }}
+                  >
+                    <div className="adm-agent-flip-inner" style={{ height: CARD_H }}>
+
+                      {/* ── FRENTE ── */}
+                      <div
+                        className="adm-agent-front flex flex-col items-center justify-center gap-3 p-5"
+                        style={{ background: '#0d1117', border: `1px solid ${cfg.border}` }}
+                      >
+                        {/* Pulsing status dot */}
+                        <div className="absolute top-3 right-3">
+                          {agent.status !== 'offline' ? (
+                            <span className="relative flex h-2 w-2">
+                              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${cfg.ping} opacity-75`} />
+                              <span className={`relative inline-flex rounded-full h-2 w-2 ${cfg.dot}`} />
+                            </span>
+                          ) : (
+                            <span className={`inline-flex rounded-full h-2 w-2 ${cfg.dot}`} />
+                          )}
+                        </div>
+
+                        {/* Icon */}
+                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+                          style={{ background: cfg.iconBg, border: `1px solid ${cfg.border}` }}>
+                          {agent.status === 'busy'
+                            ? <Activity className={`w-7 h-7 ${cfg.iconCls}`} />
+                            : agent.status === 'online'
+                              ? <Wifi className={`w-7 h-7 ${cfg.iconCls}`} />
+                              : <WifiOff className={`w-7 h-7 ${cfg.iconCls}`} />
+                          }
+                        </div>
+
+                        {/* Status tag */}
+                        <span className={`text-xs px-3 py-1 rounded-full border font-semibold ${cfg.iconCls}`}
+                          style={{ background: cfg.iconBg, borderColor: cfg.border }}>
+                          {cfg.label}
+                        </span>
+
+                        {/* Name */}
+                        <p className="text-sm font-bold text-center leading-tight text-white">
+                          {agent.name}
+                        </p>
+
+                        <p className="text-xs text-slate-600">Passe o mouse para opções</p>
                       </div>
+
+                      {/* ── VERSO ── */}
+                      <div
+                        className="adm-agent-back flex flex-col p-4"
+                        style={{ background: '#0d1117', border: `1px solid ${cfg.border}` }}
+                      >
+                        {/* Back header */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{ background: cfg.iconBg }}>
+                            <Bot className={`w-4 h-4 ${cfg.iconCls}`} />
+                          </div>
+                          <span className="text-xs font-bold text-white truncate flex-1">{agent.name}</span>
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full border font-medium flex-shrink-0 ${cfg.iconCls}`}
+                            style={{ background: cfg.iconBg, borderColor: cfg.border }}>
+                            {cfg.label}
+                          </span>
+                        </div>
+
+                        {/* Heartbeat */}
+                        <p className="text-xs text-slate-500 mb-1 truncate">
+                          {agent.last_heartbeat
+                            ? `${timeSince(agent.last_heartbeat)} · ${formatDate(agent.last_heartbeat)}`
+                            : 'Nunca conectado'}
+                        </p>
+
+                        {/* Backend URL / notes */}
+                        {(dc.backend_url || dc.notes) && (
+                          <p className="text-xs text-slate-600 font-mono mb-2 truncate">{dc.backend_url || dc.notes}</p>
+                        )}
+
+                        {/* Capabilities */}
+                        <div className="flex flex-wrap gap-1 mb-auto">
+                          {browsers.map((b: string) => (
+                            <span key={b} className="text-xs px-1.5 py-0.5 rounded border bg-blue-500/10 text-blue-400 border-blue-500/20">{b}</span>
+                          ))}
+                          {frameworks.map((f: string) => (
+                            <span key={f} className="text-xs px-1.5 py-0.5 rounded border bg-purple-500/10 text-purple-400 border-purple-500/20">{f}</span>
+                          ))}
+                          {caps.max_concurrent && (
+                            <span className="text-xs px-1.5 py-0.5 rounded border border-slate-700 text-slate-500">
+                              max {caps.max_concurrent}x
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-1 pt-2 mt-2 border-t border-slate-800">
+                          <button
+                            className="flex-1 flex items-center justify-center gap-1 text-xs py-1.5 rounded-lg text-emerald-400 hover:bg-emerald-500/10 transition-all"
+                            title="Wizard de instalação"
+                            disabled={wizardLoadingId === agent.id}
+                            onClick={() => openWizard(agent)}
+                          >
+                            {wizardLoadingId === agent.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <PlugZap className="w-3.5 h-3.5" />}
+                            <span>Conectar</span>
+                          </button>
+                          <button
+                            className={`flex-1 flex items-center justify-center gap-1 text-xs py-1.5 rounded-lg transition-all ${isExpanded ? 'text-violet-300 bg-violet-500/15' : 'text-slate-400 hover:text-violet-400 hover:bg-violet-500/10'}`}
+                            title="Configurar"
+                            onClick={() => setExpandedId(isExpanded ? null : agent.id)}
+                          >
+                            <Settings2 className="w-3.5 h-3.5" />
+                            <span>Config</span>
+                          </button>
+                          <button
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 transition-all"
+                            title="Verificar status"
+                            disabled={checkingId === agent.id}
+                            onClick={() => checkStatus(agent.id)}
+                          >
+                            {checkingId === agent.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                            title="Remover"
+                            onClick={() => { if (confirm(`Remover agente "${agent.name}"?`)) remove.mutate(agent.id); }}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button
-                      className={`p-2 rounded-lg transition-all ${
-                        expandedId === agent.id
-                          ? 'bg-violet-500/20 text-violet-300'
-                          : 'text-slate-400 hover:text-violet-400 hover:bg-violet-500/10'
-                      }`}
-                      title="Configurar agente"
-                      onClick={() => setExpandedId(expandedId === agent.id ? null : agent.id)}
-                    >
-                      <Settings2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      className="p-2 rounded-lg text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 transition-all"
-                      title="Verificar status"
-                      disabled={checkingId === agent.id}
-                      onClick={() => checkStatus(agent.id)}
-                    >
-                      {checkingId === agent.id
-                        ? <Loader2 className="w-4 h-4 animate-spin" />
-                        : <RefreshCw className="w-4 h-4" />}
-                    </button>
-                    <button
-                      className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all"
-                      title="Remover agente"
-                      onClick={() => { if (confirm(`Remover agente "${agent.name}"? Esta ação é irreversível.`)) remove.mutate(agent.id); }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {/* Deploy panel expands below the card */}
+                  {isExpanded && (
+                    <DeployPanel agent={agent} onClose={() => setExpandedId(null)} />
+                  )}
                 </div>
-              </div>
-
-              {expandedId === agent.id && (
-                <DeployPanel
-                  agent={agent}
-                  onClose={() => setExpandedId(null)}
-                />
-              )}
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        </>
       )}
 
-      {/* Info box */}
-      <div className="card p-4 border-violet-500/20">
-        <div className="flex items-start gap-3">
-          <KeyRound className="w-4 h-4 text-violet-400 flex-shrink-0 mt-0.5" />
-          <div className="text-xs text-slate-400 space-y-1">
-            <p className="font-semibold text-slate-300">Fluxo de configuração</p>
-            <p>1. Clique em <span className="text-violet-300">Novo Agente</span> — um wizard abre automaticamente</p>
-            <p>2. Copie o token, escolha o ambiente (Docker, NPM, VPS, Cloud) e informe a URL do backend</p>
-            <p>3. Copie o comando gerado e execute na pasta <code className="text-violet-300">agent/</code> do servidor</p>
-            <p>4. O agente aparece como <span className="text-green-400">Online</span> em segundos após executar</p>
-            <p className="text-slate-500">Para reconfigurar um agente existente, clique em <span className="text-violet-300">⚙ Configurar</span> no card.</p>
-          </div>
-        </div>
-      </div>
     </div>
   );
 }

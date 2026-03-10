@@ -5,7 +5,7 @@ import { formatDate } from '../lib/utils';
 import {
   Plus, Trash2, Loader2, Webhook, CheckCircle2, AlertCircle, Send,
   Play, XCircle, Zap, Bell, ChevronDown, ChevronUp, ExternalLink, Copy, Check,
-  Pencil, FileText, List, Paperclip, Globe, FolderOpen, X,
+  Pencil, FileText, List, Paperclip, Globe, FolderOpen, X, Mail, Eye, EyeOff,
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
@@ -82,6 +82,18 @@ const TYPES = [
       'Cole a URL do seu endpoint no campo abaixo.',
     ],
   },
+  {
+    value: 'smtp', label: 'E-mail (SMTP)',
+    color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20',
+    urlPlaceholder: '',
+    steps: [
+      'Informe o host SMTP do seu provedor (ex: smtp.gmail.com, smtp.sendgrid.net).',
+      'Use a porta 587 (TLS) ou 465 (SSL). Para Gmail, use 587 com TLS.',
+      'Para Gmail: ative "Acesso a app menos seguro" ou use uma Senha de App.',
+      'Preencha o e-mail remetente (from) e destinatário(s) (to).',
+      'Os e-mails serão enviados em HTML com detalhes da execução.',
+    ],
+  },
 ];
 
 const EVENTS = [
@@ -126,7 +138,8 @@ const INCLUDE_FLAGS_OPTIONS = [
 ];
 
 const EMPTY_FLAGS = { detailed_report: false, steps: false, artifacts: false };
-const EMPTY_FORM = { type: 'discord', label: '', webhook_url: '', events: ['execution.failed'] as string[], enabled: true, project_id: '' as string | null, include_flags: EMPTY_FLAGS };
+const EMPTY_SMTP = { host: '', port: 587, secure: false, user: '', pass: '', from: '', to: '', subject_prefix: '[goState]' };
+const EMPTY_FORM = { type: 'discord', label: '', webhook_url: '', events: ['execution.failed'] as string[], enabled: true, project_id: '' as string | null, include_flags: EMPTY_FLAGS, smtp_config: { ...EMPTY_SMTP } };
 
 export default function IntegrationsPage() {
   const qc = useQueryClient();
@@ -139,6 +152,8 @@ export default function IntegrationsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<any>(null);
   const [form, setForm] = useState<typeof EMPTY_FORM>({ ...EMPTY_FORM });
+  const [showSmtpPass, setShowSmtpPass] = useState(false);
+  const [showEditSmtpPass, setShowEditSmtpPass] = useState(false);
 
   const { data: projectsData } = useQuery({ queryKey: ['projects'], queryFn: () => projectsApi.list() });
   const projects: any[] = projectsData?.data?.projects || [];
@@ -202,11 +217,12 @@ export default function IntegrationsPage() {
     setEditingId(intg.id);
     setEditForm({
       label: intg.label,
-      webhook_url: intg.webhook_url,
+      webhook_url: intg.webhook_url || '',
       events: Array.isArray(intg.events) ? intg.events : [],
       enabled: !!intg.enabled,
       project_id: intg.project_id || '',
       include_flags: { ...EMPTY_FLAGS, ...(intg.include_flags || {}) },
+      smtp_config: { ...EMPTY_SMTP, ...(intg.smtp_config || {}) },
     });
   };
 
@@ -338,25 +354,93 @@ export default function IntegrationsPage() {
                 onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
               />
             </div>
-            <div>
-              <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
-                {selectedType.value === 'telegram' ? 'URL da API do Bot *' : 'Webhook URL *'}
-              </label>
-              <div className="relative">
-                <input
-                  className="input pr-8"
-                  placeholder={selectedType.urlPlaceholder}
-                  value={form.webhook_url}
-                  onChange={e => setForm(f => ({ ...f, webhook_url: e.target.value }))}
-                />
-                {form.webhook_url && (
-                  <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                    <CopyBtn text={form.webhook_url} />
+            {form.type !== 'smtp' && (
+              <div>
+                <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>
+                  {form.type === 'telegram' ? 'URL da API do Bot *' : 'Webhook URL *'}
+                </label>
+                <div className="relative">
+                  <input
+                    className="input pr-8"
+                    placeholder={selectedType.urlPlaceholder}
+                    value={form.webhook_url}
+                    onChange={e => setForm(f => ({ ...f, webhook_url: e.target.value }))}
+                  />
+                  {form.webhook_url && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <CopyBtn text={form.webhook_url} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* SMTP config fields */}
+          {form.type === 'smtp' && (
+            <div className="rounded border p-4 space-y-3" style={{ borderColor: 'rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.04)' }}>
+              <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: '#fb923c' }}>
+                <Mail className="w-3.5 h-3.5" /> Configuração SMTP
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Host *</label>
+                  <input className="input text-xs" placeholder="smtp.gmail.com" value={form.smtp_config.host}
+                    onChange={e => setForm(f => ({ ...f, smtp_config: { ...f.smtp_config, host: e.target.value } }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Porta</label>
+                  <input className="input text-xs" type="number" placeholder="587" value={form.smtp_config.port}
+                    onChange={e => setForm(f => ({ ...f, smtp_config: { ...f.smtp_config, port: Number(e.target.value) } }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Usuário *</label>
+                  <input className="input text-xs" placeholder="seu@email.com" value={form.smtp_config.user}
+                    onChange={e => setForm(f => ({ ...f, smtp_config: { ...f.smtp_config, user: e.target.value } }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Senha *</label>
+                  <div className="relative">
+                    <input className="input text-xs pr-8" type={showSmtpPass ? 'text' : 'password'} placeholder="Senha ou App Password"
+                      value={form.smtp_config.pass}
+                      onChange={e => setForm(f => ({ ...f, smtp_config: { ...f.smtp_config, pass: e.target.value } }))} />
+                    <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}
+                      onClick={() => setShowSmtpPass(v => !v)}>
+                      {showSmtpPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
                   </div>
-                )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Remetente (from) *</label>
+                  <input className="input text-xs" placeholder="goState &lt;alerts@empresa.com&gt;" value={form.smtp_config.from}
+                    onChange={e => setForm(f => ({ ...f, smtp_config: { ...f.smtp_config, from: e.target.value } }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Destinatário(s) (to) *</label>
+                  <input className="input text-xs" placeholder="qa@empresa.com, dev@empresa.com" value={form.smtp_config.to}
+                    onChange={e => setForm(f => ({ ...f, smtp_config: { ...f.smtp_config, to: e.target.value } }))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Prefixo do assunto</label>
+                  <input className="input text-xs" placeholder="[goState]" value={form.smtp_config.subject_prefix}
+                    onChange={e => setForm(f => ({ ...f, smtp_config: { ...f.smtp_config, subject_prefix: e.target.value } }))} />
+                </div>
+                <div className="flex items-end pb-1">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" className="accent-orange-500" checked={form.smtp_config.secure}
+                      onChange={e => setForm(f => ({ ...f, smtp_config: { ...f.smtp_config, secure: e.target.checked } }))} />
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>SSL (porta 465)</span>
+                  </label>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Project scope */}
           <div>
@@ -433,7 +517,7 @@ export default function IntegrationsPage() {
           <div className="flex gap-2 pt-1">
             <button
               className="btn-primary flex items-center gap-2"
-              disabled={!form.label || !form.webhook_url || form.events.length === 0 || create.isPending}
+              disabled={!form.label || (form.type !== 'smtp' && !form.webhook_url) || (form.type === 'smtp' && (!form.smtp_config.host || !form.smtp_config.user || !form.smtp_config.pass || !form.smtp_config.from || !form.smtp_config.to)) || form.events.length === 0 || create.isPending}
               onClick={() => create.mutate()}
             >
               {create.isPending && <Loader2 className="w-3 h-3 animate-spin" />} Criar Integração
@@ -455,106 +539,266 @@ export default function IntegrationsPage() {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {integrations.map((intg) => {
-            const info = typeInfo(intg.type);
-            const events: string[] = Array.isArray(intg.events) ? intg.events : [];
-            const flags = intg.include_flags || {};
-            const activeFlags = INCLUDE_FLAGS_OPTIONS.filter(o => flags[o.key]);
-            const intgProject = projects.find((p: any) => p.id === intg.project_id);
-            const isEditing = editingId === intg.id;
+        <>
+          <style>{`
+            .flip-card { perspective: 1000px; }
+            .flip-card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.55s cubic-bezier(.4,0,.2,1); transform-style: preserve-3d; }
+            .flip-card:hover .flip-card-inner { transform: rotateY(180deg); }
+            .flip-card.is-editing .flip-card-inner { transform: rotateY(180deg); }
+            .flip-card-front, .flip-card-back { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 0.75rem; }
+            .flip-card-back { transform: rotateY(180deg); }
+          `}</style>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {integrations.map((intg) => {
+              const info = typeInfo(intg.type);
+              const events: string[] = Array.isArray(intg.events) ? intg.events : [];
+              const flags = intg.include_flags || {};
+              const activeFlags = INCLUDE_FLAGS_OPTIONS.filter(o => flags[o.key]);
+              const intgProject = projects.find((p: any) => p.id === intg.project_id);
+              const isEditing = editingId === intg.id;
 
-            return (
-              <div key={intg.id} className="card p-4 group flex flex-col gap-3">
-                {/* Header */}
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className={`text-xs px-2.5 py-1 rounded-lg border font-semibold flex-shrink-0 ${info.bg} ${info.color}`}>
-                      {info.label}
-                    </span>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-sm truncate" style={{ color: 'var(--text)' }}>{intg.label}</p>
-                      <p className="text-xs mt-0.5 truncate max-w-[200px]" style={{ color: 'var(--text-muted)' }}>{intg.webhook_url}</p>
+              const typeGradient: Record<string, string> = {
+                discord: 'from-indigo-600/30 to-indigo-900/60',
+                slack: 'from-green-600/30 to-green-900/60',
+                teams: 'from-blue-600/30 to-blue-900/60',
+                telegram: 'from-sky-600/30 to-sky-900/60',
+                pagerduty: 'from-emerald-600/30 to-emerald-900/60',
+                webhook: 'from-slate-600/30 to-slate-900/60',
+                smtp: 'from-orange-600/30 to-orange-900/60',
+              };
+              const typeBorderColor: Record<string, string> = {
+                discord: '#6366f150',
+                slack: '#22c55e50',
+                teams: '#3b82f650',
+                telegram: '#0ea5e950',
+                pagerduty: '#10b98150',
+                webhook: '#64748b50',
+                smtp: '#f9731650',
+              };
+              const typeIconBg: Record<string, string> = {
+                discord: 'rgba(99,102,241,0.2)',
+                slack: 'rgba(34,197,94,0.2)',
+                teams: 'rgba(59,130,246,0.2)',
+                telegram: 'rgba(14,165,233,0.2)',
+                pagerduty: 'rgba(16,185,129,0.2)',
+                webhook: 'rgba(100,116,139,0.2)',
+                smtp: 'rgba(249,115,22,0.2)',
+              };
+
+              const CARD_HEIGHT = '200px';
+
+              return (
+                <div key={intg.id} className="space-y-2">
+                <div
+                  className={`flip-card ${isEditing ? 'is-editing' : ''}`}
+                  style={{ height: CARD_HEIGHT, minHeight: CARD_HEIGHT }}
+                >
+                  <div className="flip-card-inner" style={{ height: CARD_HEIGHT, minHeight: CARD_HEIGHT }}>
+
+                    {/* ── FRENTE ── */}
+                    <div
+                      className={`flip-card-front flex flex-col items-center justify-center gap-3 p-5 bg-gradient-to-br ${typeGradient[intg.type] || typeGradient.webhook}`}
+                      style={{ border: `1px solid ${typeBorderColor[intg.type] || '#64748b50'}`, background: 'var(--surface-1)' }}
+                    >
+                      {/* Status dot */}
+                      <div className="absolute top-3 right-3">
+                        <span className={`inline-flex w-2 h-2 rounded-full ${intg.enabled ? 'bg-green-400' : 'bg-slate-600'}`} />
+                      </div>
+
+                      {/* Service icon area */}
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center flex-shrink-0"
+                        style={{ background: typeIconBg[intg.type] || typeIconBg.webhook, border: `1px solid ${typeBorderColor[intg.type] || '#64748b50'}` }}>
+                        <Webhook className={`w-7 h-7 ${info.color}`} />
+                      </div>
+
+                      {/* Service tag */}
+                      <span className={`text-xs px-3 py-1 rounded-full border font-semibold ${info.bg} ${info.color}`}>
+                        {info.label}
+                      </span>
+
+                      {/* Hook name */}
+                      <p className="text-sm font-bold text-center leading-tight" style={{ color: 'var(--text)' }}>
+                        {intg.label}
+                      </p>
+
+                      {/* Hint */}
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Passe o mouse para detalhes</p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      className="p-1.5 rounded hover:bg-violet-500/10 transition-colors"
-                      style={{ color: 'var(--text-muted)' }}
-                      title="Editar"
-                      onClick={() => isEditing ? setEditingId(null) : startEdit(intg)}
+
+                    {/* ── VERSO ── */}
+                    <div
+                      className="flip-card-back flex flex-col p-4 overflow-y-auto"
+                      style={{
+                        background: 'var(--surface-1)',
+                        border: `1px solid ${typeBorderColor[intg.type] || '#64748b50'}`,
+                        height: CARD_HEIGHT,
+                        minHeight: CARD_HEIGHT,
+                      }}
                     >
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      className="p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 transition-colors"
-                      style={{ color: 'var(--text-muted)' }}
-                      onClick={() => { if (confirm('Remover integração?')) remove.mutate(intg.id); }}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                      <>
+                          {/* Back header */}
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold flex-shrink-0 ${info.bg} ${info.color}`}>{info.label}</span>
+                              <span className="text-xs font-bold truncate" style={{ color: 'var(--text)' }}>{intg.label}</span>
+                            </div>
+                            <div className="flex items-center gap-0.5 flex-shrink-0">
+                              <button className="p-1.5 rounded hover:bg-violet-500/10 transition-colors" style={{ color: 'var(--text-muted)' }} title="Editar" onClick={() => startEdit(intg)}>
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button className="p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 transition-colors" style={{ color: 'var(--text-muted)' }} onClick={() => { if (confirm('Remover integração?')) remove.mutate(intg.id); }}>
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* URL */}
+                          <p className="text-xs font-mono truncate mb-2" style={{ color: 'var(--text-muted)' }} title={intg.webhook_url}>{intg.webhook_url}</p>
+
+                          {/* Scope + flags */}
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {intgProject ? (
+                              <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}>
+                                <FolderOpen className="w-3 h-3" />{intgProject.name}
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border" style={{ background: 'var(--surface-3)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}>
+                                <Globe className="w-3 h-3" />Global
+                              </span>
+                            )}
+                            {activeFlags.map(f => {
+                              const Icon = f.icon;
+                              return (
+                                <span key={f.key} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border text-violet-400 bg-violet-500/10 border-violet-500/20">
+                                  <Icon className="w-3 h-3" />{f.label}
+                                </span>
+                              );
+                            })}
+                          </div>
+
+                          {/* Events */}
+                          <div className="flex flex-wrap gap-1 mb-auto">
+                            {events.map((ev: string) => {
+                              const evInfo = EVENTS.find(e => e.value === ev);
+                              const Icon = evInfo?.icon || Bell;
+                              return (
+                                <span key={ev} className={`flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border font-medium ${evInfo?.activeBg || ''}`}
+                                  style={!evInfo ? { background: 'var(--surface-3)', color: 'var(--text-muted)', border: '1px solid var(--border)' } : {}}>
+                                  <Icon className="w-3 h-3" />{evInfo?.label || ev}
+                                </span>
+                              );
+                            })}
+                          </div>
+
+                          {/* Footer */}
+                          <div className="pt-2 mt-2 border-t flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+                            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatDate(intg.created_at)}</span>
+                            <button
+                              className="flex items-center gap-1.5 text-xs btn-ghost py-1 px-2"
+                              disabled={testingId === intg.id}
+                              onClick={() => testIntegration(intg.id)}
+                            >
+                              {testingId === intg.id ? <Loader2 className="w-3 h-3 animate-spin" />
+                                : testResult?.id === intg.id
+                                  ? (testResult?.ok ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <AlertCircle className="w-3 h-3 text-red-400" />)
+                                  : <Send className="w-3 h-3" />}
+                              {testResult?.id === intg.id ? (testResult?.ok ? 'Enviado!' : 'Falhou') : 'Testar'}
+                            </button>
+                          </div>
+                      </>
+                    </div>
                   </div>
                 </div>
 
-                {/* Project badge + flags badges */}
-                {(intgProject || activeFlags.length > 0) && !isEditing && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {intgProject && (
-                      <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border font-medium"
-                        style={{ background: 'var(--surface-3)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}>
-                        <FolderOpen className="w-3 h-3" />{intgProject.name}
-                      </span>
-                    )}
-                    {!intgProject && (
-                      <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border font-medium"
-                        style={{ background: 'var(--surface-3)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}>
-                        <Globe className="w-3 h-3" />Global
-                      </span>
-                    )}
-                    {activeFlags.map(f => {
-                      const Icon = f.icon;
-                      return (
-                        <span key={f.key} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border font-medium text-violet-400 bg-violet-500/10 border-violet-500/20">
-                          <Icon className="w-3 h-3" />{f.label}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Event badges */}
-                {!isEditing && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {events.map((ev: string) => {
-                      const evInfo = EVENTS.find(e => e.value === ev);
-                      const Icon = evInfo?.icon || Bell;
-                      return (
-                        <span
-                          key={ev}
-                          className={`flex items-center gap-1 text-xs px-2 py-0.5 rounded-lg border font-medium ${evInfo?.activeBg || ''}`}
-                          style={!evInfo ? { background: 'var(--surface-3)', color: 'var(--text-muted)', border: '1px solid var(--border)' } : {}}
-                        >
-                          <Icon className="w-3 h-3" />
-                          {evInfo?.label || ev}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* Inline edit form */}
+                {/* ── EDIT PANEL (fora do flip, expande abaixo) ── */}
                 {isEditing && editForm && (
-                  <div className="space-y-3 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+                  <div className="card p-4 space-y-3" style={{ border: `1px solid ${typeBorderColor[intg.type] || '#64748b50'}` }}>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${info.bg} ${info.color}`}>{info.label}</span>
+                        <span className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Editar: {intg.label}</span>
+                      </div>
+                      <button className="p-1 rounded hover:bg-white/10 transition-colors" style={{ color: 'var(--text-muted)' }} onClick={() => setEditingId(null)}>
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Rótulo</label>
                         <input className="input text-xs" value={editForm.label} onChange={e => setEditForm((f: any) => ({ ...f, label: e.target.value }))} />
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Webhook URL</label>
-                        <input className="input text-xs" value={editForm.webhook_url} onChange={e => setEditForm((f: any) => ({ ...f, webhook_url: e.target.value }))} />
-                      </div>
+                      {intg.type !== 'smtp' && (
+                        <div>
+                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Webhook URL</label>
+                          <input className="input text-xs" value={editForm.webhook_url} onChange={e => setEditForm((f: any) => ({ ...f, webhook_url: e.target.value }))} />
+                        </div>
+                      )}
                     </div>
+
+                    {/* SMTP fields no edit panel */}
+                    {intg.type === 'smtp' && editForm.smtp_config && (
+                      <div className="rounded border p-3 space-y-2" style={{ borderColor: 'rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.04)' }}>
+                        <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: '#fb923c' }}>
+                          <Mail className="w-3.5 h-3.5" /> Configuração SMTP
+                        </p>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div className="col-span-2">
+                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Host</label>
+                            <input className="input text-xs" placeholder="smtp.gmail.com" value={editForm.smtp_config.host || ''}
+                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, host: e.target.value } }))} />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Porta</label>
+                            <input className="input text-xs" type="number" value={editForm.smtp_config.port || 587}
+                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, port: Number(e.target.value) } }))} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Usuário</label>
+                            <input className="input text-xs" value={editForm.smtp_config.user || ''}
+                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, user: e.target.value } }))} />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Senha</label>
+                            <div className="relative">
+                              <input className="input text-xs pr-8" type={showEditSmtpPass ? 'text' : 'password'} value={editForm.smtp_config.pass || ''}
+                                onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, pass: e.target.value } }))} />
+                              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}
+                                onClick={() => setShowEditSmtpPass(v => !v)}>
+                                {showEditSmtpPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Remetente (from)</label>
+                            <input className="input text-xs" value={editForm.smtp_config.from || ''}
+                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, from: e.target.value } }))} />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Destinatário(s) (to)</label>
+                            <input className="input text-xs" value={editForm.smtp_config.to || ''}
+                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, to: e.target.value } }))} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Prefixo do assunto</label>
+                            <input className="input text-xs" value={editForm.smtp_config.subject_prefix || '[goState]'}
+                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, subject_prefix: e.target.value } }))} />
+                          </div>
+                          <div className="flex items-end pb-1">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input type="checkbox" className="accent-orange-500" checked={!!editForm.smtp_config.secure}
+                                onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, secure: e.target.checked } }))} />
+                              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>SSL (porta 465)</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     <div>
                       <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Projeto</label>
                       <select className="input text-xs" value={editForm.project_id || ''} onChange={e => setEditForm((f: any) => ({ ...f, project_id: e.target.value || null }))}>
@@ -579,30 +823,27 @@ export default function IntegrationsPage() {
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>O que incluir na notificação</label>
+                      <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Incluir na notificação</label>
                       <div className="space-y-1.5">
                         {INCLUDE_FLAGS_OPTIONS.map(opt => {
                           const Icon = opt.icon;
                           const active = editForm.include_flags[opt.key];
                           return (
-                            <label key={opt.key} className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all ${
-                              active ? 'border-violet-500/40 bg-violet-500/8' : ''
-                            }`} style={!active ? { borderColor: 'var(--border)', background: 'transparent' } : {}}>
+                            <label key={opt.key} className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer transition-all ${active ? 'border-violet-500/40 bg-violet-500/8' : ''}`}
+                              style={!active ? { borderColor: 'var(--border)', background: 'transparent' } : {}}>
                               <input type="checkbox" className="mt-0.5 accent-violet-500" checked={active}
                                 onChange={() => setEditForm((f: any) => ({ ...f, include_flags: { ...f.include_flags, [opt.key]: !active } }))} />
                               <Icon className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${active ? 'text-violet-400' : ''}`} style={!active ? { color: 'var(--text-muted)' } : {}} />
                               <div>
                                 <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>{opt.label}</p>
-                                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{opt.description}</p>
                               </div>
                             </label>
                           );
                         })}
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button className="btn-primary text-xs py-1 px-3 flex items-center gap-1.5"
-                        disabled={update.isPending}
+                    <div className="flex gap-2 pt-1">
+                      <button className="btn-primary text-xs py-1 px-3 flex items-center gap-1.5" disabled={update.isPending}
                         onClick={() => update.mutate({ id: intg.id, data: { ...editForm, project_id: editForm.project_id || null } })}>
                         {update.isPending && <Loader2 className="w-3 h-3 animate-spin" />} Salvar
                       </button>
@@ -610,31 +851,11 @@ export default function IntegrationsPage() {
                     </div>
                   </div>
                 )}
-
-                {/* Footer */}
-                {!isEditing && (
-                  <div className="pt-2 border-t flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
-                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatDate(intg.created_at)}</span>
-                    <button
-                      className="flex items-center gap-1.5 text-xs btn-ghost py-1 px-2"
-                      disabled={testingId === intg.id}
-                      onClick={() => testIntegration(intg.id)}
-                    >
-                      {testingId === intg.id ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : testResult?.id === intg.id ? (
-                        testResult?.ok ? <CheckCircle2 className="w-3 h-3 text-green-400" /> : <AlertCircle className="w-3 h-3 text-red-400" />
-                      ) : (
-                        <Send className="w-3 h-3" />
-                      )}
-                      {testResult?.id === intg.id ? (testResult?.ok ? 'Enviado!' : 'Falhou') : 'Testar'}
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );
