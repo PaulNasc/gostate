@@ -1,8 +1,8 @@
 # goState
 
-Uma plataforma web para gerenciar e executar testes automatizados com Playwright. A ideia central é ter um lugar único onde você cadastra projetos, escreve scripts de teste (ou monta fluxos visualmente), e delega a execução para agentes remotos — que podem estar rodando localmente, em servidores ou em containers Docker.
+goState é uma plataforma para organizar, disparar e acompanhar testes automatizados com Playwright de forma mais simples. A proposta é centralizar o fluxo inteiro em um só lugar: projetos, casos de teste, scripts, execuções, agentes remotos, integrações e histórico.
 
-Os resultados chegam em tempo real via WebSocket: logs linha a linha, screenshots, vídeos da execução e status final. Tem dashboard com métricas, histórico paginado, agendamento por cron e relatórios exportáveis.
+Na prática, você pode montar testes visualmente ou escrever scripts, enviar a execução para agentes conectados e acompanhar tudo em tempo real — com logs, artefatos, métricas e notificações. É um projeto pensado para times que querem mais controle sobre automação sem perder visibilidade do que está acontecendo.
 
 ---
 
