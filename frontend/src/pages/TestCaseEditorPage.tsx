@@ -153,6 +153,8 @@ export default function TestCaseEditorPage() {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [showRunModal, setShowRunModal] = useState(false);
+  const [runVideo, setRunVideo] = useState(false);
+  const [runScreenshot, setRunScreenshot] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showExecHistory, setShowExecHistory] = useState(false);
@@ -234,7 +236,8 @@ export default function TestCaseEditorPage() {
     mutationFn: () => executionsApi.create({
       test_case_id: tcId!,
       browsers: ['chromium'],
-      video_enabled: true,
+      video_enabled: runVideo,
+      screenshot_enabled: runScreenshot,
       timeout: 60000,
     }),
     onSuccess: (res) => navigate(`/executions/${res.data.execution.id}`),
@@ -687,7 +690,18 @@ export default function TestCaseEditorPage() {
             <div className="p-3 rounded-lg border space-y-1" style={{ borderColor: 'var(--border)' }}>
               <p className="text-xs text-slate-400"><span className="text-slate-300 font-medium">Steps:</span> {steps.length}</p>
               <p className="text-xs text-slate-400"><span className="text-slate-300 font-medium">Browser:</span> Chromium</p>
-              <p className="text-xs text-slate-400"><span className="text-slate-300 font-medium">Vídeo:</span> Habilitado</p>
+              <p className="text-xs text-slate-400"><span className="text-slate-300 font-medium">Vídeo:</span> {runVideo ? 'Habilitado' : 'Desabilitado'}</p>
+              <p className="text-xs text-slate-400"><span className="text-slate-300 font-medium">Screenshot:</span> {runScreenshot ? 'Habilitado' : 'Desabilitado'}</p>
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={runVideo} onChange={e => setRunVideo(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
+                <span className="text-sm" style={{ color: 'var(--text)' }}>Gravar vídeo da execução</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={runScreenshot} onChange={e => setRunScreenshot(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
+                <span className="text-sm" style={{ color: 'var(--text)' }}>Capturar screenshots automáticos</span>
+              </label>
             </div>
             <div className="flex gap-2 justify-end">
               <button className="btn-ghost px-4 py-2 text-sm" onClick={() => setShowRunModal(false)}>Cancelar</button>

@@ -108,6 +108,7 @@ export function initSocket(server: HttpServer): SocketServer {
             language: 'js',
             browsers,
             videoEnabled: !!exec.video_enabled,
+            screenshotEnabled: true,
             timeout: 60000,
             backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
           });

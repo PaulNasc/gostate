@@ -416,25 +416,39 @@ function runMigrations(db: Database.Database): void {
   };
   migrations.push(v14);
 
-  // v13: fix integrations.events stored as space-separated string instead of JSON array
-  const v13: any = { version: 13, sql: `SELECT 1` }; // no-op SQL, logic runs below
-  if (!applied.includes(13)) {
-    const badRows = db.prepare(`SELECT id, events FROM integrations WHERE events NOT LIKE '[%'`).all() as any[];
-    for (const row of badRows) {
-      const parts = (row.events || '').trim().split(/\s+/).filter(Boolean);
-      const fixed = JSON.stringify(parts);
-      db.prepare('UPDATE integrations SET events = ? WHERE id = ?').run(fixed, row.id);
-    }
-    db.prepare('INSERT INTO migrations (version) VALUES (?)').run(13);
-    console.log(`[DB] Migration v13 applied — fixed ${badRows.length} integration(s) with malformed events`);
-  }
-
-  for (const migration of migrations) {
+  for (const migration of migrations.sort((a, b) => a.version - b.version)) {
     if (!applied.includes(migration.version)) {
       db.exec(migration.sql);
       db.prepare('INSERT INTO migrations (version) VALUES (?)').run(migration.version);
       console.log(`[DB] Migration v${migration.version} applied`);
     }
+  }
+
+  // v13: fix integrations.events stored as space-separated string instead of JSON array
+  // Must run after standard migrations so the integrations table definitely exists.
+  if (!applied.includes(13)) {
+    const integrationsTableExists = db.prepare(`
+      SELECT name
+      FROM sqlite_master
+      WHERE type = 'table' AND name = 'integrations'
+    `).get() as any;
+
+    if (integrationsTableExists) {
+      const badRows = db.prepare(`
+        SELECT id, events
+        FROM integrations
+        WHERE events IS NOT NULL AND events NOT LIKE '[%'
+      `).all() as any[];
+
+      for (const row of badRows) {
+        const parts = (row.events || '').trim().split(/\s+/).filter(Boolean);
+        const fixed = JSON.stringify(parts);
+        db.prepare('UPDATE integrations SET events = ? WHERE id = ?').run(fixed, row.id);
+      }
+    }
+
+    db.prepare('INSERT INTO migrations (version) VALUES (?)').run(13);
+    console.log('[DB] Migration v13 applied');
   }
 
   seedDefaultAdmin(db);

@@ -47,6 +47,7 @@ const CreateExecSchema = z.object({
   environment_id: z.string().uuid().optional(),
   scriptContent: z.string().optional(),
   video_enabled: z.boolean().default(false),
+  screenshot_enabled: z.boolean().default(true),
   browsers: z.array(z.string()).default(['chromium']),
   timeout: z.number().int().min(5000).max(300000).default(60000),
 });
@@ -95,7 +96,16 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
   const availableAgent = db.prepare('SELECT * FROM agents WHERE status = ? ORDER BY last_heartbeat DESC LIMIT 1').get('online') as any;
 
   const id = uuidv4();
-  const { test_case_id, script_id, test_plan_id, environment_id, video_enabled, browsers, scriptContent: bodyScriptContent } = parse.data;
+  const {
+    test_case_id,
+    script_id,
+    test_plan_id,
+    environment_id,
+    video_enabled,
+    screenshot_enabled,
+    browsers,
+    scriptContent: bodyScriptContent
+  } = parse.data;
   const browsersJson = JSON.stringify(browsers);
 
   db.prepare(`
@@ -146,6 +156,7 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
       language: 'js',
       browsers: parse.data.browsers,
       videoEnabled: video_enabled,
+      screenshotEnabled: screenshot_enabled,
       timeout: parse.data.timeout,
       backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
       env: envVars,

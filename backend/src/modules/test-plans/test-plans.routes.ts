@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+﻿import { Router, Response } from 'express';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../../db/schema';
@@ -87,7 +87,7 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
     WHERE tp.id = ?
   `).get(req.params.id) as any;
 
-  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
 
   const tcIds: string[] = (() => { try { return JSON.parse(plan.test_case_ids || '[]'); } catch { return []; } })();
 
@@ -120,7 +120,7 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
 router.post('/', (req: AuthRequest, res: Response) => {
   const parse = CreatePlanSchema.safeParse(req.body);
   if (!parse.success) {
-    res.status(400).json({ error: 'Dados inválidos', code: 'VALIDATION_ERROR', details: parse.error.flatten() });
+    res.status(400).json({ error: 'Dados invÃƒÂ¡lidos', code: 'VALIDATION_ERROR', details: parse.error.flatten() });
     return;
   }
 
@@ -128,7 +128,7 @@ router.post('/', (req: AuthRequest, res: Response) => {
   const { name, description, project_id, test_case_ids, max_parallel } = parse.data;
 
   const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(project_id);
-  if (!project) { res.status(404).json({ error: 'Projeto não encontrado', code: 'NOT_FOUND' }); return; }
+  if (!project) { res.status(404).json({ error: 'Projeto nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
 
   const id = uuidv4();
   const now = new Date().toISOString();
@@ -148,13 +148,13 @@ router.post('/', (req: AuthRequest, res: Response) => {
 router.put('/:id', (req: AuthRequest, res: Response) => {
   const parse = UpdatePlanSchema.safeParse(req.body);
   if (!parse.success) {
-    res.status(400).json({ error: 'Dados inválidos', code: 'VALIDATION_ERROR', details: parse.error.flatten() });
+    res.status(400).json({ error: 'Dados invÃƒÂ¡lidos', code: 'VALIDATION_ERROR', details: parse.error.flatten() });
     return;
   }
 
   const db = getDb();
   const plan = db.prepare('SELECT * FROM test_plans WHERE id = ?').get(req.params.id) as any;
-  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
 
   const { name, description, test_case_ids, max_parallel } = parse.data;
   const now = new Date().toISOString();
@@ -189,16 +189,16 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
 router.delete('/:id', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const plan = db.prepare('SELECT id FROM test_plans WHERE id = ?').get(req.params.id);
-  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
   db.prepare('DELETE FROM test_plans WHERE id = ?').run(req.params.id);
   res.status(204).end();
 });
 
-// POST /api/test-plans/:id/runs — dispatch all test cases as a batch
+// POST /api/test-plans/:id/runs Ã¢â‚¬â€ dispatch all test cases as a batch
 router.post('/:id/runs', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const plan = db.prepare('SELECT * FROM test_plans WHERE id = ?').get(req.params.id) as any;
-  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
 
   const tcIds: string[] = (() => { try { return JSON.parse(plan.test_case_ids || '[]'); } catch { return []; } })();
   if (tcIds.length === 0) {
@@ -206,7 +206,7 @@ router.post('/:id/runs', (req: AuthRequest, res: Response) => {
     return;
   }
 
-  const { browsers = ['chromium'], video_enabled = false } = req.body;
+  const { browsers = ['chromium'], video_enabled = false, screenshot_enabled = true } = req.body;
   const browsersJson = JSON.stringify(browsers);
 
   const availableAgents = db.prepare(
@@ -246,6 +246,7 @@ router.post('/:id/runs', (req: AuthRequest, res: Response) => {
           language: 'js',
           browsers,
           videoEnabled: video_enabled,
+          screenshotEnabled: screenshot_enabled,
           timeout: 60000,
           backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
         });
@@ -267,11 +268,11 @@ router.post('/:id/runs', (req: AuthRequest, res: Response) => {
   });
 });
 
-// GET /api/test-plans/:id/runs/latest — aggregate status of most recent batch
+// GET /api/test-plans/:id/runs/latest Ã¢â‚¬â€ aggregate status of most recent batch
 router.get('/:id/runs/latest', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const plan = db.prepare('SELECT id FROM test_plans WHERE id = ?').get(req.params.id);
-  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
 
   const latestBatch = db.prepare(`
     SELECT created_at FROM executions
@@ -328,18 +329,18 @@ router.get('/:id/runs/latest', (req: AuthRequest, res: Response) => {
   });
 });
 
-// POST /api/test-plans/:id/runs/retry — re-run only failed/error from latest batch
+// POST /api/test-plans/:id/runs/retry Ã¢â‚¬â€ re-run only failed/error from latest batch
 router.post('/:id/runs/retry', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const plan = db.prepare('SELECT * FROM test_plans WHERE id = ?').get(req.params.id) as any;
-  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
 
   const latestBatch = db.prepare(`
     SELECT created_at FROM executions WHERE test_plan_id = ? ORDER BY created_at DESC LIMIT 1
   `).get(req.params.id) as any;
 
   if (!latestBatch) {
-    res.status(400).json({ error: 'Nenhuma execução anterior encontrada', code: 'NO_PREVIOUS_RUN' });
+    res.status(400).json({ error: 'Nenhuma execuÃƒÂ§ÃƒÂ£o anterior encontrada', code: 'NO_PREVIOUS_RUN' });
     return;
   }
 
@@ -357,7 +358,7 @@ router.post('/:id/runs/retry', (req: AuthRequest, res: Response) => {
     return;
   }
 
-  const { browsers = ['chromium'], video_enabled = false } = req.body;
+  const { browsers = ['chromium'], video_enabled = false, screenshot_enabled = true } = req.body;
   const browsersJson = JSON.stringify(browsers);
   const availableAgents = db.prepare("SELECT * FROM agents WHERE status = 'online' ORDER BY last_heartbeat DESC LIMIT ?").all(plan.max_parallel) as any[];
   const io = getIo();
@@ -385,7 +386,7 @@ router.post('/:id/runs/retry', (req: AuthRequest, res: Response) => {
         const steps = (() => { try { return JSON.parse(tc.steps || '[]'); } catch { return []; } })();
         io.to(`agent:${agent.id}`).emit('exec:dispatch', {
           execId, test_case_id: tcId, script_id: null, scriptContent: '', steps,
-          framework: 'playwright', language: 'js', browsers, videoEnabled: video_enabled,
+          framework: 'playwright', language: 'js', browsers, videoEnabled: video_enabled, screenshotEnabled: screenshot_enabled,
           timeout: 60000, backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
         });
       }
@@ -401,3 +402,5 @@ router.post('/:id/runs/retry', (req: AuthRequest, res: Response) => {
 });
 
 export default router;
+
+

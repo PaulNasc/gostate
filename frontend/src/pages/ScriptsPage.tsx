@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '../components/Toast';
+import { normalizeRecordedScript } from '../lib/scriptNormalizer';
 
 const DEFAULT_SCRIPT = `const { test, expect } = require('@playwright/test');
 
@@ -15,7 +16,6 @@ test('Meu Teste', async ({ page }) => {
   await page.goto('https://example.com');
   await expect(page.locator('h1')).toBeVisible();
   await expect(page.locator('h1')).toContainText('Example Domain');
-  await page.screenshot({ path: 'screenshot.png' });
 });
 `;
 
@@ -40,6 +40,11 @@ export default function ScriptsPage() {
   const [recorderProject, setRecorderProject] = useState('');
   const [recorderName, setRecorderName] = useState('');
   const [recorderPasted, setRecorderPasted] = useState('');
+  const [recorderNormalize, setRecorderNormalize] = useState(true);
+  const [recorderPreview, setRecorderPreview] = useState('');
+  const [recorderChanges, setRecorderChanges] = useState<string[]>([]);
+  const [runVideo, setRunVideo] = useState(false);
+  const [runScreenshot, setRunScreenshot] = useState(true);
 
   const { data: projectsData } = useQuery({
     queryKey: ['projects'],
@@ -153,7 +158,8 @@ export default function ScriptsPage() {
       script_id: selected.id,
       scriptContent: editorContent,
       browsers: [runBrowser],
-      video_enabled: false,
+      video_enabled: runVideo,
+      screenshot_enabled: runScreenshot,
       timeout: 60000,
       ...(runAgent ? { agent_id: runAgent } : {}),
     });
@@ -162,17 +168,34 @@ export default function ScriptsPage() {
   function handleImportRecording() {
     if (!recorderPasted.trim() || !recorderName.trim() || !recorderProject) return;
     const filename = recorderName.trim().endsWith('.spec.js') ? recorderName.trim() : `${recorderName.trim()}.spec.js`;
+    const normalized = recorderNormalize
+      ? normalizeRecordedScript(recorderPasted.trim(), { testName: recorderName.trim() })
+      : { content: recorderPasted.trim(), changes: [] as string[] };
     createScript.mutate(
-      { project_id: recorderProject, filename, content: recorderPasted.trim(), framework: 'playwright', language: 'js' },
+      { project_id: recorderProject, filename, content: normalized.content, framework: 'playwright', language: 'js' },
       {
         onSuccess: () => {
           setShowRecorder(false);
           setRecorderPasted('');
           setRecorderName('');
-          toast.success('Script de gravação importado!');
+          setRecorderPreview('');
+          setRecorderChanges([]);
+          toast.success(normalized.changes.length > 0 ? 'Script importado com melhorias automáticas' : 'Script de gravação importado!');
         },
       }
     );
+  }
+
+  function handleRecorderPasteChange(value: string) {
+    setRecorderPasted(value);
+    if (recorderNormalize && value.trim()) {
+      const result = normalizeRecordedScript(value, { testName: recorderName.trim() });
+      setRecorderPreview(result.content);
+      setRecorderChanges(result.changes);
+      return;
+    }
+    setRecorderPreview(value);
+    setRecorderChanges([]);
   }
 
   return (
@@ -467,10 +490,58 @@ test('test', async ({ page }) => {
   // código gerado pelo playwright codegen...
 });`}
                 value={recorderPasted}
-                onChange={e => setRecorderPasted(e.target.value)}
+                onChange={e => handleRecorderPasteChange(e.target.value)}
                 spellCheck={false}
               />
             </div>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={recorderNormalize}
+                onChange={e => {
+                  const checked = e.target.checked;
+                  setRecorderNormalize(checked);
+                  if (checked && recorderPasted.trim()) {
+                    const result = normalizeRecordedScript(recorderPasted, { testName: recorderName.trim() });
+                    setRecorderPreview(result.content);
+                    setRecorderChanges(result.changes);
+                  } else {
+                    setRecorderPreview(recorderPasted);
+                    setRecorderChanges([]);
+                  }
+                }}
+                className="w-4 h-4 rounded accent-blue-500"
+              />
+              <span className="text-sm" style={{ color: 'var(--text)' }}>Normalizar código automaticamente ao importar</span>
+            </label>
+
+            {(recorderChanges.length > 0 || recorderPreview) && (
+              <div className="space-y-3">
+                {recorderChanges.length > 0 && (
+                  <div className="rounded-xl p-3 space-y-2" style={{ background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+                    <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Melhorias detectadas</p>
+                    <div className="space-y-1">
+                      {recorderChanges.map((change, idx) => (
+                        <p key={`${change}-${idx}`} className="text-xs" style={{ color: 'var(--text)' }}>- {change}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {recorderPreview && recorderPreview !== recorderPasted && (
+                  <div>
+                    <label className="text-xs text-slate-400 mb-1 block">Prévia normalizada</label>
+                    <textarea
+                      className="w-full h-36 font-mono text-xs rounded-xl px-3 py-2.5 resize-none outline-none"
+                      style={{ background: '#0a0f1a', border: '1px solid var(--border)', color: '#93c5fd', lineHeight: '1.4' }}
+                      value={recorderPreview}
+                      readOnly
+                      spellCheck={false}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="flex gap-2 justify-end">
               <button className="btn-ghost px-4 py-2 text-sm" onClick={() => setShowRecorder(false)}>Cancelar</button>
@@ -514,6 +585,14 @@ test('test', async ({ page }) => {
                   <option value="webkit">WebKit (Safari)</option>
                 </select>
               </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={runVideo} onChange={e => setRunVideo(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
+                <span className="text-sm" style={{ color: 'var(--text)' }}>Gravar vídeo da execução</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={runScreenshot} onChange={e => setRunScreenshot(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
+                <span className="text-sm" style={{ color: 'var(--text)' }}>Capturar screenshots automáticos</span>
+              </label>
               {dirty && (
                 <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
                   <RefreshCw className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" />

@@ -54,6 +54,7 @@ export interface RunConfig {
   language: string;
   browsers: string[];
   videoEnabled: boolean;
+  screenshotEnabled?: boolean;
   timeout: number;
   variables?: Record<string, string>;
   backendUrl: string;

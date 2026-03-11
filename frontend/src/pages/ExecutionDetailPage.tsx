@@ -51,6 +51,7 @@ export default function ExecutionDetailPage() {
       script_id: exec?.script_id || undefined,
       browsers: exec?.browsers ? JSON.parse(exec.browsers) : ['chromium'],
       video_enabled: !!exec?.video_enabled,
+      screenshot_enabled: true,
       timeout: 60000,
     }),
     onSuccess: (res) => { toast.success('Re-execução criada'); navigate(`/executions/${res.data.execution.id}`); },

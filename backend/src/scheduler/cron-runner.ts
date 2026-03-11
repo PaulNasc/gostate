@@ -82,6 +82,7 @@ function runDueSchedules() {
           io.to(`agent:${agent.id}`).emit('exec:dispatch', {
             execId, test_case_id: tcId, script_id: null, scriptContent: '', steps,
             framework: 'playwright', language: 'js', browsers, videoEnabled: false,
+            screenshotEnabled: true,
             timeout: 60000, backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
           });
         }
@@ -130,19 +131,22 @@ function runDueSchedules() {
       try { return tc ? JSON.parse(tc.steps || '[]') : []; } catch { return []; }
     })();
 
-    io.to(`agent:${agent.id}`).emit('exec:dispatch', {
+    const runConfig = {
       execId: id,
       test_case_id: sched.test_case_id || null,
-      script_id: null,
+      script_id: schedScriptId || null,
       scriptContent: '',
       steps,
       framework: 'playwright',
       language: 'js',
       browsers,
       videoEnabled: false,
+      screenshotEnabled: true,
       timeout: 60000,
       backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
-    });
+    };
+
+    io.to(`agent:${agent.id}`).emit('exec:dispatch', runConfig);
 
     console.log(`[CRON] Schedule "${sched.label}" disparado → exec ${id} (agente: ${agent.name})`);
   }

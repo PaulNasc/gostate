@@ -47,8 +47,8 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 
-# Install Playwright browsers (chromium only for lean image size)
-# To add Firefox or WebKit: npx playwright install --with-deps firefox webkit
+
+# RUN npx playwright install --with-deps firefox webkit
 RUN npx playwright install --with-deps chromium
 
 COPY . .

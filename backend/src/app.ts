@@ -58,7 +58,10 @@ export function createApp() {
   app.use('/api/artifacts/:execId/:filename', (req, res) => {
     const filePath = path.join(__dirname, '..', 'data', 'artifacts', `exec_${req.params.execId}`, req.params.filename);
     res.sendFile(filePath, (err) => {
-      if (err) res.status(404).json({ error: 'Artefato não encontrado' });
+      if (err && !res.headersSent) {
+        const statusCode = typeof (err as any)?.statusCode === 'number' ? (err as any).statusCode : 404;
+        res.status(statusCode).json({ error: 'Artefato não encontrado' });
+      }
     });
   });
 

@@ -59,7 +59,7 @@ function connect() {
   console.log(`[Agent] Conectando em ${BACKEND_URL}... (paralelo máx: ${MAX_CONCURRENT})`);
   socket = io(BACKEND_URL, {
     auth: { agentToken: AGENT_TOKEN },
-    transports: ['polling', 'websocket'],
+    transports: ['websocket'],
     reconnection: true,
     reconnectionDelay: 3000,
     reconnectionAttempts: Infinity,
@@ -104,6 +104,7 @@ interface ExecConfig {
   language: string;
   browsers: string[];
   videoEnabled: boolean;
+  screenshotEnabled?: boolean;
   timeout: number;
   backendUrl: string;
 }
@@ -339,6 +340,7 @@ function generatePlaywrightConfig(workDir: string, config: ExecConfig, browsers?
   const effectiveBrowsers = browsers && browsers.length > 0 ? browsers : config.browsers;
   const projects = effectiveBrowsers.map(b => `{ name: '${b}', use: { browserName: '${b}' } }`).join(', ');
   const video = config.videoEnabled ? `'on'` : `'retain-on-failure'`;
+  const screenshot = config.screenshotEnabled === false ? `'off'` : `'on'`;
   const wdFwd = workDir.replace(/\\/g, '/');
   return `
 module.exports = {
@@ -352,7 +354,7 @@ module.exports = {
   use: {
     headless: true,
     video: ${video},
-    screenshot: 'on',
+    screenshot: ${screenshot},
     trace: 'retain-on-failure',
   },
   outputDir: '${wdFwd}/test-results',
