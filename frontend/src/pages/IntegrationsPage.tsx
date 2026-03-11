@@ -189,6 +189,7 @@ export default function IntegrationsPage() {
     mutationFn: () => integrationsApi.create({
       ...form,
       project_id: form.project_id || null,
+      smtp_config: form.type === 'smtp' ? form.smtp_config : undefined,
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['integrations'] });

@@ -15,15 +15,15 @@ const includeFlagsSchema = z.object({
 });
 
 const smtpConfigSchema = z.object({
-  host: z.string().min(1),
+  host: z.string().optional(),
   port: z.number().int().min(1).max(65535).default(587),
   secure: z.boolean().default(false),
-  user: z.string().min(1),
-  pass: z.string().min(1),
-  from: z.string().min(1),
-  to: z.string().min(1),
+  user: z.string().optional(),
+  pass: z.string().optional(),
+  from: z.string().optional(),
+  to: z.string().optional(),
   subject_prefix: z.string().default('[goState]'),
-}).partial();
+}).optional();
 
 const integrationBaseSchema = z.object({
   type: z.enum(['discord', 'slack', 'teams', 'webhook', 'telegram', 'pagerduty', 'smtp']),
@@ -41,12 +41,12 @@ const integrationSchema = integrationBaseSchema.superRefine((data, ctx) => {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'webhook_url é obrigatório para este tipo', path: ['webhook_url'] });
   }
   if (data.type === 'smtp') {
-    const cfg = data.smtp_config || {};
-    if (!cfg.host) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'SMTP host obrigatório', path: ['smtp_config', 'host'] });
-    if (!cfg.user) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'SMTP usuário obrigatório', path: ['smtp_config', 'user'] });
-    if (!cfg.pass) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'SMTP senha obrigatória', path: ['smtp_config', 'pass'] });
-    if (!cfg.from) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'SMTP remetente obrigatório', path: ['smtp_config', 'from'] });
-    if (!cfg.to)   ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'SMTP destinatário obrigatório', path: ['smtp_config', 'to'] });
+    const cfg = (data.smtp_config || {}) as Record<string, any>;
+    if (!cfg['host']) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'SMTP host obrigatório', path: ['smtp_config', 'host'] });
+    if (!cfg['user']) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'SMTP usuário obrigatório', path: ['smtp_config', 'user'] });
+    if (!cfg['pass']) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'SMTP senha obrigatória', path: ['smtp_config', 'pass'] });
+    if (!cfg['from']) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'SMTP remetente obrigatório', path: ['smtp_config', 'from'] });
+    if (!cfg['to'])   ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'SMTP destinatário obrigatório', path: ['smtp_config', 'to'] });
   }
 });
 
