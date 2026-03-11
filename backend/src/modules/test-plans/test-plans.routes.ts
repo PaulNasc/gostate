@@ -229,9 +229,9 @@ router.post('/:id/runs', (req: AuthRequest, res: Response) => {
 
       db.prepare(`
         INSERT INTO executions
-          (id, test_plan_id, test_case_id, agent_id, triggered_by, status, video_enabled, browsers, created_at)
-        VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)
-      `).run(execId, plan.id, tcId, agent?.id || null, req.user!.id, video_enabled ? 1 : 0, browsersJson, now);
+          (id, test_plan_id, test_case_id, agent_id, triggered_by, status, video_enabled, screenshot_enabled, browsers, created_at)
+        VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)
+      `).run(execId, plan.id, tcId, agent?.id || null, req.user!.id, video_enabled ? 1 : 0, screenshot_enabled ? 1 : 0, browsersJson, now);
 
       if (agent) {
         db.prepare("UPDATE agents SET status = 'busy' WHERE id = ?").run(agent.id);
@@ -268,11 +268,11 @@ router.post('/:id/runs', (req: AuthRequest, res: Response) => {
   });
 });
 
-// GET /api/test-plans/:id/runs/latest Ã¢â‚¬â€ aggregate status of most recent batch
+// GET /api/test-plans/:id/runs/latest — aggregate status of most recent batch
 router.get('/:id/runs/latest', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const plan = db.prepare('SELECT id FROM test_plans WHERE id = ?').get(req.params.id);
-  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
 
   const latestBatch = db.prepare(`
     SELECT created_at FROM executions
@@ -329,18 +329,18 @@ router.get('/:id/runs/latest', (req: AuthRequest, res: Response) => {
   });
 });
 
-// POST /api/test-plans/:id/runs/retry Ã¢â‚¬â€ re-run only failed/error from latest batch
+// POST /api/test-plans/:id/runs/retry — re-run only failed/error from latest batch
 router.post('/:id/runs/retry', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const plan = db.prepare('SELECT * FROM test_plans WHERE id = ?').get(req.params.id) as any;
-  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
 
   const latestBatch = db.prepare(`
     SELECT created_at FROM executions WHERE test_plan_id = ? ORDER BY created_at DESC LIMIT 1
   `).get(req.params.id) as any;
 
   if (!latestBatch) {
-    res.status(400).json({ error: 'Nenhuma execuÃƒÂ§ÃƒÂ£o anterior encontrada', code: 'NO_PREVIOUS_RUN' });
+    res.status(400).json({ error: 'Nenhuma execução anterior encontrada', code: 'NO_PREVIOUS_RUN' });
     return;
   }
 
@@ -377,9 +377,9 @@ router.post('/:id/runs/retry', (req: AuthRequest, res: Response) => {
 
       db.prepare(`
         INSERT INTO executions
-          (id, test_plan_id, test_case_id, agent_id, triggered_by, status, video_enabled, browsers, created_at)
-        VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?)
-      `).run(execId, plan.id, tcId, agent?.id || null, req.user!.id, video_enabled ? 1 : 0, browsersJson, now);
+          (id, test_plan_id, test_case_id, agent_id, triggered_by, status, video_enabled, screenshot_enabled, browsers, created_at)
+        VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)
+      `).run(execId, plan.id, tcId, agent?.id || null, req.user!.id, video_enabled ? 1 : 0, screenshot_enabled ? 1 : 0, browsersJson, now);
 
       if (agent) {
         db.prepare("UPDATE agents SET status = 'busy' WHERE id = ?").run(agent.id);
@@ -402,5 +402,6 @@ router.post('/:id/runs/retry', (req: AuthRequest, res: Response) => {
 });
 
 export default router;
+
 
 

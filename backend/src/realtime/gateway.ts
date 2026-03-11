@@ -77,7 +77,7 @@ export function initSocket(server: HttpServer): SocketServer {
 
       // Re-dispatch queued executions from last 30 min
       const queuedExecs = db.prepare(`
-        SELECT e.id, e.test_case_id, e.script_id, e.video_enabled, e.browsers
+        SELECT e.id, e.test_case_id, e.script_id, e.video_enabled, e.screenshot_enabled, e.browsers
         FROM executions e
         WHERE e.agent_id = ? AND e.status = 'queued'
           AND (julianday('now') - julianday(e.created_at)) * 1440 <= 30
@@ -108,7 +108,7 @@ export function initSocket(server: HttpServer): SocketServer {
             language: 'js',
             browsers,
             videoEnabled: !!exec.video_enabled,
-            screenshotEnabled: true,
+            screenshotEnabled: exec.screenshot_enabled !== 0,
             timeout: 60000,
             backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
           });

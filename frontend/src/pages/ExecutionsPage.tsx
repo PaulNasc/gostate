@@ -123,7 +123,7 @@ export default function ExecutionsPage() {
       const uniqueTcIds = [...new Set(failedInView.map((e: any) => e.test_case_id))];
       if (uniqueTcIds.length === 0) throw new Error('Nenhum caso de teste com falha nesta visão');
       await Promise.all(uniqueTcIds.map((tcId: any) =>
-        executionsApi.create({ test_case_id: tcId, browsers: ['chromium'], video_enabled: false })
+        executionsApi.create({ test_case_id: tcId, browsers: ['chromium'], video_enabled: false, screenshot_enabled: true })
       ));
       return uniqueTcIds.length;
     },

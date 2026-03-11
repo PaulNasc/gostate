@@ -51,7 +51,7 @@ export default function ExecutionDetailPage() {
       script_id: exec?.script_id || undefined,
       browsers: exec?.browsers ? JSON.parse(exec.browsers) : ['chromium'],
       video_enabled: !!exec?.video_enabled,
-      screenshot_enabled: true,
+      screenshot_enabled: exec?.screenshot_enabled !== 0,
       timeout: 60000,
     }),
     onSuccess: (res) => { toast.success('Re-execução criada'); navigate(`/executions/${res.data.execution.id}`); },
@@ -245,6 +245,11 @@ export default function ExecutionDetailPage() {
               {exec.video_enabled && (
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">🎥 Vídeo ativado</span>
+                </div>
+              )}
+              {exec.screenshot_enabled !== 0 && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">📸 Screenshot ativado</span>
                 </div>
               )}
             </div>

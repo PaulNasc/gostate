@@ -162,6 +162,9 @@ export default function TestCaseEditorPage() {
   const [tagInput, setTagInput] = useState('');
   const [tagsInitialized, setTagsInitialized] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
+  const [suggestUrl, setSuggestUrl] = useState('');
+  const [suggestGoal, setSuggestGoal] = useState('');
+  const [suggestionResult, setSuggestionResult] = useState<any | null>(null);
 
   if (tc && !initialized) {
     const parsed = typeof tc.steps === 'string' ? JSON.parse(tc.steps || '[]') : (tc.steps || []);
@@ -243,6 +246,20 @@ export default function TestCaseEditorPage() {
     onSuccess: (res) => navigate(`/executions/${res.data.execution.id}`),
   });
 
+  const suggestSteps = useMutation({
+    mutationFn: () => testcasesApi.suggestSteps(suiteId!, tcId!, {
+      url: suggestUrl.trim(),
+      goal: suggestGoal.trim() || undefined,
+    }),
+    onSuccess: (res) => {
+      setSuggestionResult(res.data);
+      toast.success(res.data.cached ? 'Sugestões carregadas do cache' : 'Sugestões geradas com sucesso');
+    },
+    onError: (error: any) => {
+      toast.error(error?.response?.data?.error || 'Erro ao analisar a URL');
+    },
+  });
+
   const addStep = useCallback((type: string) => {
     const meta = getStepMeta(type);
     if (!meta) return;
@@ -274,6 +291,22 @@ export default function TestCaseEditorPage() {
       return arr;
     });
     setDirty(true);
+  };
+
+  const applySuggestedSteps = (mode: 'append' | 'replace') => {
+    const suggested: any[] = suggestionResult?.suggestedSteps || [];
+    if (suggested.length === 0) return;
+    const normalized = suggested.map((step: any, idx: number) => ({
+      type: step.type,
+      order: mode === 'replace' ? idx + 1 : steps.length + idx + 1,
+      params: step.params || {},
+      _id: Date.now() + idx,
+    }));
+    setSteps(prev => mode === 'replace' ? normalized : [...prev, ...normalized]);
+    setExpandedIdx(normalized.length > 0 ? 0 : null);
+    setDirty(true);
+    setShowCatalog(false);
+    toast.info(mode === 'replace' ? 'Fluxo substituído pelas sugestões' : 'Sugestões adicionadas ao fluxo');
   };
 
   // Drag handlers
@@ -313,6 +346,15 @@ export default function TestCaseEditorPage() {
             )}
           </div>
         </div>
+        <button
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors"
+          style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+          onClick={() => { setShowCatalog(true); setShowExecHistory(false); setShowHistory(false); }}
+          title="Gerar sugestão inteligente"
+        >
+          <Zap className="w-3.5 h-3.5" />
+          Sugerir
+        </button>
         {dirty && <span className="text-xs text-amber-400 font-medium">● não salvo</span>}
         <button
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors relative"
@@ -365,6 +407,90 @@ export default function TestCaseEditorPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-4">
+              <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Sugestão inteligente</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Analise uma URL para receber seletores e um fluxo inicial de steps.</p>
+                </div>
+                <div className="space-y-2">
+                  <input
+                    className="input w-full text-sm"
+                    placeholder="https://exemplo.com/login"
+                    value={suggestUrl}
+                    onChange={e => setSuggestUrl(e.target.value)}
+                  />
+                  <input
+                    className="input w-full text-sm"
+                    placeholder="Objetivo opcional: fazer login e chegar no dashboard"
+                    value={suggestGoal}
+                    onChange={e => setSuggestGoal(e.target.value)}
+                  />
+                </div>
+                <button
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                  disabled={suggestSteps.isPending || !suggestUrl.trim()}
+                  onClick={() => suggestSteps.mutate()}
+                >
+                  {suggestSteps.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  {suggestSteps.isPending ? 'Analisando...' : 'Gerar sugestões'}
+                </button>
+                {suggestionResult && (
+                  <div className="space-y-3 pt-1">
+                    <div className="rounded-lg p-3 border space-y-2" style={{ borderColor: 'var(--border)' }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>
+                          {suggestionResult.analysis?.title || 'Sugestões geradas'}
+                        </p>
+                        {suggestionResult.cached && (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">cache</span>
+                        )}
+                      </div>
+                      {suggestionResult.analysis?.description && (
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{suggestionResult.analysis.description}</p>
+                      )}
+                      <div className="space-y-1">
+                        {(suggestionResult.analysis?.signals || []).map((signal: string) => (
+                          <p key={signal} className="text-xs" style={{ color: 'var(--text-muted)' }}>- {signal}</p>
+                        ))}
+                      </div>
+                    </div>
+                    {!!suggestionResult.analysis?.selectorHints?.length && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Seletores sugeridos</p>
+                        {suggestionResult.analysis.selectorHints.map((hint: any, idx: number) => (
+                          <div key={`${hint.selector}-${idx}`} className="rounded-lg px-2.5 py-2 border" style={{ borderColor: 'var(--border)' }}>
+                            <p className="text-xs font-mono" style={{ color: 'var(--text)' }}>{hint.selector}</p>
+                            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{hint.reason}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!!suggestionResult.suggestedSteps?.length && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Fluxo sugerido</p>
+                        {suggestionResult.suggestedSteps.map((step: any, idx: number) => (
+                          <div key={`${step.type}-${idx}`} className="rounded-lg px-2.5 py-2 border" style={{ borderColor: 'var(--border)' }}>
+                            <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>{idx + 1}. {getStepMeta(step.type)?.label || step.type}</p>
+                            <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{step.rationale}</p>
+                          </div>
+                        ))}
+                        <div className="flex gap-2">
+                          <button className="btn-primary flex-1" onClick={() => applySuggestedSteps('append')}>Adicionar ao fluxo</button>
+                          <button
+                            className="btn-ghost flex-1"
+                            onClick={() => {
+                              if (steps.length > 0 && !confirm('Substituir todos os steps atuais pelas sugestões?')) return;
+                              applySuggestedSteps('replace');
+                            }}
+                          >
+                            Substituir tudo
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               {STEP_CATALOG.map(group => (
                 <div key={group.group}>
                   <p className="text-xs font-semibold uppercase tracking-wider mb-2 px-1" style={{ color: 'var(--text-muted)' }}>{group.group}</p>

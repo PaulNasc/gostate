@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
 import { getDb } from '../../db/schema';
 import { authenticate, AuthRequest } from '../../shared/middleware/auth';
 
@@ -12,6 +13,8 @@ const StepSchema = z.object({
   type: z.enum([
     'goto', 'click', 'fill', 'assert', 'wait', 'screenshot', 'api_call', 'group', 'library_ref',
     'expect_visible', 'expect_text', 'wait_for', 'wait_ms',
+    'expect_hidden', 'expect_value', 'assert_url', 'assert_title', 'wait_for_url',
+    'hover', 'double_click', 'select_option', 'clear', 'keyboard', 'scroll',
   ]),
   label: z.string().optional(),
   params: z.record(z.unknown()).default({}),
@@ -30,6 +33,215 @@ const TestCaseSchema = z.object({
   type: z.enum(['web', 'api', 'mobile', 'mixed']).default('web'),
   version_comment: z.string().optional(),
 });
+
+const SuggestStepsSchema = z.object({
+  url: z.string().url(),
+  goal: z.string().max(300).optional(),
+});
+
+type SuggestionPayload = ReturnType<typeof buildSuggestionPayload>;
+
+const suggestionCache = new Map<string, { expiresAt: number; payload: SuggestionPayload }>();
+const rateLimitWindowMs = 60 * 1000;
+const rateLimitMaxRequests = 5;
+const requestCounters = new Map<string, number[]>();
+
+function decodeHtml(value: string) {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .trim();
+}
+
+function normalizeText(value: string) {
+  return decodeHtml(value).replace(/\s+/g, ' ').trim();
+}
+
+function extractTitle(html: string) {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? normalizeText(match[1]) : '';
+}
+
+function extractMetaDescription(html: string) {
+  const match = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["'][^>]*>/i);
+  return match ? normalizeText(match[1]) : '';
+}
+
+function extractButtons(html: string) {
+  const buttons: Array<{ selector: string; text: string; reason: string }> = [];
+  const buttonRegex = /<button([^>]*)>([\s\S]*?)<\/button>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = buttonRegex.exec(html)) && buttons.length < 6) {
+    const attrs = match[1] || '';
+    const text = normalizeText(match[2].replace(/<[^>]+>/g, ' '));
+    if (!text) continue;
+    const idMatch = attrs.match(/\sid=["']([^"']+)["']/i);
+    const dataTestIdMatch = attrs.match(/\sdata-testid=["']([^"']+)["']/i);
+    const selector = idMatch
+      ? `#${idMatch[1]}`
+      : dataTestIdMatch
+        ? `[data-testid="${dataTestIdMatch[1]}"]`
+        : `button:has-text("${text.slice(0, 80)}")`;
+    buttons.push({ selector, text, reason: `Botão com texto "${text}"` });
+  }
+  return buttons;
+}
+
+function extractInputs(html: string) {
+  const inputs: Array<{ selector: string; label: string; reason: string; suggestedValue: string }> = [];
+  const inputRegex = /<input([^>]*)>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = inputRegex.exec(html)) && inputs.length < 6) {
+    const attrs = match[1] || '';
+    const typeMatch = attrs.match(/\stype=["']([^"']+)["']/i);
+    const type = (typeMatch?.[1] || 'text').toLowerCase();
+    if (['hidden', 'submit', 'button', 'checkbox', 'radio', 'file'].includes(type)) continue;
+    const idMatch = attrs.match(/\sid=["']([^"']+)["']/i);
+    const nameMatch = attrs.match(/\sname=["']([^"']+)["']/i);
+    const placeholderMatch = attrs.match(/\splaceholder=["']([^"']+)["']/i);
+    const selector = idMatch
+      ? `#${idMatch[1]}`
+      : nameMatch
+        ? `input[name="${nameMatch[1]}"]`
+        : placeholderMatch
+          ? `input[placeholder="${placeholderMatch[1]}"]`
+          : 'input';
+    const label = normalizeText(placeholderMatch?.[1] || nameMatch?.[1] || idMatch?.[1] || `campo ${inputs.length + 1}`);
+    const suggestedValue =
+      /mail|email/i.test(label) ? 'usuario@exemplo.com'
+        : /senha|password/i.test(label) ? 'Senha123!'
+          : /nome/i.test(label) ? 'Usuário Teste'
+            : /busca|search/i.test(label) ? 'consulta teste'
+              : 'valor de teste';
+    inputs.push({ selector, label, reason: `Campo detectado: ${label}`, suggestedValue });
+  }
+  return inputs;
+}
+
+function extractLinks(html: string) {
+  const links: Array<{ selector: string; text: string; reason: string }> = [];
+  const linkRegex = /<a([^>]*)>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = linkRegex.exec(html)) && links.length < 4) {
+    const attrs = match[1] || '';
+    const text = normalizeText(match[2].replace(/<[^>]+>/g, ' '));
+    if (!text) continue;
+    const hrefMatch = attrs.match(/\shref=["']([^"']+)["']/i);
+    const selector = hrefMatch?.[1]
+      ? `a[href="${hrefMatch[1]}"]`
+      : `a:has-text("${text.slice(0, 80)}")`;
+    links.push({ selector, text, reason: `Link com texto "${text}"` });
+  }
+  return links;
+}
+
+function inferAssertionSelector(html: string) {
+  const headings = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  if (headings) {
+    return {
+      selector: 'h1',
+      text: normalizeText(headings[1].replace(/<[^>]+>/g, ' ')),
+      reason: 'Título principal da página',
+    };
+  }
+  return null;
+}
+
+function buildSuggestionPayload(url: string, goal: string | undefined, html: string) {
+  const title = extractTitle(html);
+  const description = extractMetaDescription(html);
+  const buttons = extractButtons(html);
+  const inputs = extractInputs(html);
+  const links = extractLinks(html);
+  const heading = inferAssertionSelector(html);
+  const steps: Array<{ type: string; params: Record<string, string>; rationale: string }> = [
+    {
+      type: 'goto',
+      params: { url },
+      rationale: 'Abrir a página inicial informada para iniciar o fluxo.',
+    },
+  ];
+
+  if (heading?.text) {
+    steps.push({
+      type: 'expect_text',
+      params: { selector: heading.selector, text: heading.text },
+      rationale: `Validar que a página carregou corretamente usando ${heading.reason.toLowerCase()}.`,
+    });
+  } else {
+    steps.push({
+      type: 'assert_title',
+      params: { title: title || 'Título esperado' },
+      rationale: 'Validar o título da página após a navegação.',
+    });
+  }
+
+  if (inputs[0]) {
+    steps.push({
+      type: 'fill',
+      params: { selector: inputs[0].selector, value: inputs[0].suggestedValue },
+      rationale: inputs[0].reason,
+    });
+  }
+
+  if (inputs[1]) {
+    steps.push({
+      type: 'fill',
+      params: { selector: inputs[1].selector, value: inputs[1].suggestedValue },
+      rationale: inputs[1].reason,
+    });
+  }
+
+  const primaryAction = buttons[0] || links[0];
+  if (primaryAction) {
+    steps.push({
+      type: 'click',
+      params: { selector: primaryAction.selector },
+      rationale: primaryAction.reason,
+    });
+  }
+
+  steps.push({
+    type: 'wait_for_url',
+    params: { url: goal?.trim() || '/' },
+    rationale: goal?.trim()
+      ? `Aguardar o destino esperado para o objetivo "${goal.trim()}".`
+      : 'Aguardar mudança de URL após a ação principal.',
+  });
+
+  const summary = [
+    title ? `Título: ${title}` : null,
+    description ? `Descrição: ${description}` : null,
+    inputs.length ? `${inputs.length} campo(s) detectado(s)` : null,
+    buttons.length ? `${buttons.length} botão(ões) detectado(s)` : null,
+    links.length ? `${links.length} link(s) detectado(s)` : null,
+  ].filter(Boolean);
+
+  return {
+    analysis: {
+      title,
+      description,
+      goal: goal || '',
+      signals: summary,
+      selectorHints: [...inputs, ...buttons, ...links].slice(0, 8),
+    },
+    suggestedSteps: steps,
+  };
+}
+
+function enforceRateLimit(userId: string) {
+  const now = Date.now();
+  const recent = (requestCounters.get(userId) || []).filter((ts) => now - ts < rateLimitWindowMs);
+  if (recent.length >= rateLimitMaxRequests) {
+    return false;
+  }
+  recent.push(now);
+  requestCounters.set(userId, recent);
+  return true;
+}
 
 router.get('/', (req: AuthRequest, res: Response) => {
   const db = getDb();
@@ -69,6 +281,54 @@ router.get('/:tcId', (req: AuthRequest, res: Response) => {
   const tc = db.prepare('SELECT * FROM test_cases WHERE id = ? AND suite_id = ?').get(req.params.tcId, req.params.suiteId) as any;
   if (!tc) { res.status(404).json({ error: 'Caso de teste não encontrado' }); return; }
   res.json({ test_case: parseTC(tc) });
+});
+
+router.post('/:tcId/suggest-steps', async (req: AuthRequest, res: Response) => {
+  const parse = SuggestStepsSchema.safeParse(req.body);
+  if (!parse.success) { res.status(400).json({ error: 'Dados inválidos', details: parse.error.flatten() }); return; }
+  if (!enforceRateLimit(req.user!.id)) {
+    res.status(429).json({ error: 'Limite de análises por minuto excedido. Aguarde e tente novamente.' });
+    return;
+  }
+
+  const db = getDb();
+  const tc = db.prepare('SELECT id FROM test_cases WHERE id = ? AND suite_id = ?').get(req.params.tcId, req.params.suiteId) as any;
+  if (!tc) { res.status(404).json({ error: 'Caso de teste não encontrado' }); return; }
+
+  const { url, goal } = parse.data;
+  const cacheKey = `${req.user!.id}:${url}:${goal || ''}`;
+  const cached = suggestionCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    res.json({ ...cached.payload, cached: true });
+    return;
+  }
+
+  try {
+    const response = await axios.get(url, {
+      timeout: 12000,
+      maxRedirects: 5,
+      headers: {
+        'User-Agent': 'goState Suggestion Bot/1.0',
+        Accept: 'text/html,application/xhtml+xml',
+      },
+      responseType: 'text',
+      validateStatus: (status) => status >= 200 && status < 400,
+    });
+
+    const html = typeof response.data === 'string' ? response.data : '';
+    const payload = buildSuggestionPayload(url, goal, html);
+    suggestionCache.set(cacheKey, {
+      expiresAt: Date.now() + 10 * 60 * 1000,
+      payload,
+    });
+    res.json({ ...payload, cached: false });
+  } catch (error: any) {
+    const message = typeof error?.message === 'string' ? error.message : 'Falha ao analisar a URL';
+    const host = (() => {
+      try { return new URL(url).hostname; } catch { return url; }
+    })();
+    res.status(502).json({ error: `Não foi possível analisar ${host}`, details: message });
+  }
 });
 
 router.put('/:tcId', (req: AuthRequest, res: Response) => {

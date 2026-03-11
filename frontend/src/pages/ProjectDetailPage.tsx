@@ -299,6 +299,7 @@ function RunModal({ tcId, title, onClose, projectId }: { tcId: string; title: st
   const [agentId, setAgentId] = useState('');
   const [browsers, setBrowsers] = useState('chromium');
   const [video, setVideo] = useState(false);
+  const [screenshot, setScreenshot] = useState(true);
   const [envId, setEnvId] = useState('');
 
   const run = useMutation({
@@ -306,6 +307,7 @@ function RunModal({ tcId, title, onClose, projectId }: { tcId: string; title: st
       test_case_id: tcId,
       browsers: [browsers],
       video_enabled: video,
+      screenshot_enabled: screenshot,
       timeout: 60000,
       environment_id: envId || undefined,
     }),
@@ -359,6 +361,10 @@ function RunModal({ tcId, title, onClose, projectId }: { tcId: string; title: st
             <input type="checkbox" checked={video} onChange={e => setVideo(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
             <span className="text-sm" style={{ color: 'var(--text)' }}>Gravar vídeo da execução</span>
           </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={screenshot} onChange={e => setScreenshot(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
+            <span className="text-sm" style={{ color: 'var(--text)' }}>Capturar screenshots automáticos</span>
+          </label>
         </div>
 
         {run.isError && (
@@ -385,6 +391,7 @@ function RunSuiteModal({ suiteId, suiteName, onClose }: { suiteId: string; suite
   const tcs: any[] = tcsData?.data?.test_cases || [];
   const [browsers, setBrowsers] = useState('chromium');
   const [video, setVideo] = useState(false);
+  const [screenshot, setScreenshot] = useState(true);
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<{ id: string; title: string }[]>([]);
   const [error, setError] = useState('');
@@ -400,6 +407,7 @@ function RunSuiteModal({ suiteId, suiteName, onClose }: { suiteId: string; suite
           test_case_id: tc.id,
           browsers: [browsers],
           video_enabled: video,
+          screenshot_enabled: screenshot,
           timeout: 60000,
         });
         created.push({ id: res.data.execution.id, title: tc.title });
@@ -434,6 +442,10 @@ function RunSuiteModal({ suiteId, suiteName, onClose }: { suiteId: string; suite
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={video} onChange={e => setVideo(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
                 <span className="text-sm" style={{ color: 'var(--text)' }}>Gravar vídeo das execuções</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={screenshot} onChange={e => setScreenshot(e.target.checked)} className="w-4 h-4 rounded accent-blue-500" />
+                <span className="text-sm" style={{ color: 'var(--text)' }}>Capturar screenshots automáticos</span>
               </label>
               {agents.length === 0 && (
                 <p className="text-xs text-yellow-400">Nenhum agente online. Inicie um agente primeiro.</p>

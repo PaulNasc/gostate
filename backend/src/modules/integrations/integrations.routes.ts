@@ -74,7 +74,7 @@ router.get('/', (req: any, res) => {
 
 router.post('/', requireRole('admin'), (req: any, res) => {
   const body = integrationSchema.safeParse(req.body);
-  if (!body.success) return res.status(400).json({ error: body.error.flatten() });
+  if (!body.success) return res.status(400).json({ error: 'Dados inválidos', details: body.error.flatten() });
 
   const { type, label, webhook_url, events, enabled, project_id, include_flags, smtp_config } = body.data;
   const db = getDb();
@@ -108,7 +108,7 @@ router.patch('/:id', requireRole('admin'), (req: any, res) => {
   if (!integration) return res.status(404).json({ error: 'Integração não encontrada' });
 
   const body = integrationBaseSchema.partial().safeParse(req.body);
-  if (!body.success) return res.status(400).json({ error: body.error.flatten() });
+  if (!body.success) return res.status(400).json({ error: 'Dados inválidos', details: body.error.flatten() });
 
   const { label, webhook_url, events, enabled, project_id, include_flags, smtp_config } = body.data;
   const now = new Date().toISOString();

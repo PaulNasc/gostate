@@ -109,9 +109,9 @@ router.post('/', authenticate, (req: AuthRequest, res: Response) => {
   const browsersJson = JSON.stringify(browsers);
 
   db.prepare(`
-    INSERT INTO executions (id, test_plan_id, test_case_id, script_id, environment_id, agent_id, triggered_by, status, video_enabled, browsers)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, test_plan_id || null, test_case_id || null, script_id || null, environment_id || null, availableAgent?.id || null, req.user!.id, 'queued', video_enabled ? 1 : 0, browsersJson);
+    INSERT INTO executions (id, test_plan_id, test_case_id, script_id, environment_id, agent_id, triggered_by, status, video_enabled, screenshot_enabled, browsers)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, test_plan_id || null, test_case_id || null, script_id || null, environment_id || null, availableAgent?.id || null, req.user!.id, 'queued', video_enabled ? 1 : 0, screenshot_enabled ? 1 : 0, browsersJson);
 
   const execution = db.prepare('SELECT * FROM executions WHERE id = ?').get(id) as any;
 

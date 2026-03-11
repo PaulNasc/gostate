@@ -59,6 +59,7 @@ export const testcasesApi = {
   update: (suiteId: string, tcId: string, data: any) => api.put(`/api/suites/${suiteId}/testcases/${tcId}`, data),
   remove: (suiteId: string, tcId: string) => api.delete(`/api/suites/${suiteId}/testcases/${tcId}`),
   versions: (suiteId: string, tcId: string) => api.get(`/api/suites/${suiteId}/testcases/${tcId}/versions`),
+  suggestSteps: (suiteId: string, tcId: string, data: { url: string; goal?: string }) => api.post(`/api/suites/${suiteId}/testcases/${tcId}/suggest-steps`, data),
   move: (suiteId: string, tcId: string, targetSuiteId: string) => api.patch(`/api/suites/${suiteId}/testcases/${tcId}/move`, { target_suite_id: targetSuiteId }),
   duplicate: (suiteId: string, tcId: string, targetSuiteId?: string) => api.post(`/api/suites/${suiteId}/testcases/${tcId}/duplicate`, targetSuiteId ? { target_suite_id: targetSuiteId } : {}),
 };

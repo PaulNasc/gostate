@@ -171,6 +171,7 @@ function runMigrations(db: Database.Database): void {
           finished_at TEXT,
           duration_ms INTEGER,
           video_enabled INTEGER NOT NULL DEFAULT 0,
+          screenshot_enabled INTEGER NOT NULL DEFAULT 1,
           created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
 
@@ -383,6 +384,12 @@ function runMigrations(db: Database.Database): void {
     sql: `ALTER TABLE executions ADD COLUMN schedule_id TEXT REFERENCES schedules(id) ON DELETE SET NULL;`
   };
   migrations.push(v11);
+
+  const v15: any = {
+    version: 15,
+    sql: `ALTER TABLE executions ADD COLUMN screenshot_enabled INTEGER NOT NULL DEFAULT 1;`
+  };
+  migrations.push(v15);
 
   const v12: any = {
     version: 12,

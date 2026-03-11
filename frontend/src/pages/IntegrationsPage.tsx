@@ -9,6 +9,27 @@ import {
 } from 'lucide-react';
 import { useToast } from '../components/Toast';
 
+function getErrorMessage(error: any): string {
+  const data = error?.response?.data;
+  if (!data) return error?.message || 'Erro inesperado';
+  if (typeof data.error === 'string') return data.error;
+  const fieldErrors = data?.details?.fieldErrors || data?.error?.fieldErrors;
+  const formErrors = data?.details?.formErrors || data?.error?.formErrors;
+  const messages: string[] = [];
+  if (Array.isArray(formErrors)) {
+    messages.push(...formErrors.filter((msg: any) => typeof msg === 'string' && msg.trim()));
+  }
+  if (fieldErrors && typeof fieldErrors === 'object') {
+    Object.values(fieldErrors).forEach((value: any) => {
+      if (Array.isArray(value)) {
+        messages.push(...value.filter((msg: any) => typeof msg === 'string' && msg.trim()));
+      }
+    });
+  }
+  if (messages.length > 0) return messages.join(' ');
+  return error?.message || 'Erro inesperado';
+}
+
 const TYPES = [
   {
     value: 'discord', label: 'Discord',
@@ -176,7 +197,7 @@ export default function IntegrationsPage() {
       setForm({ ...EMPTY_FORM });
       toast.success('Integração criada com sucesso');
     },
-    onError: () => toast.error('Erro ao criar integração'),
+    onError: (error) => toast.error(getErrorMessage(error)),
   });
 
   const update = useMutation({
@@ -187,7 +208,7 @@ export default function IntegrationsPage() {
       setEditForm(null);
       toast.success('Integração atualizada');
     },
-    onError: () => toast.error('Erro ao atualizar integração'),
+    onError: (error) => toast.error(getErrorMessage(error)),
   });
 
   const remove = useMutation({
@@ -524,7 +545,7 @@ export default function IntegrationsPage() {
             </button>
             <button className="btn-ghost" onClick={() => { setShowForm(false); setShowGuide(false); }}>Cancelar</button>
           </div>
-          {create.isError && <p className="text-xs text-red-400">{(create.error as any)?.response?.data?.error}</p>}
+          {create.isError && <p className="text-xs text-red-400">{getErrorMessage(create.error)}</p>}
         </div>
       )}
 
