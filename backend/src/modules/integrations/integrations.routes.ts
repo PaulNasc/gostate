@@ -203,42 +203,102 @@ router.post('/:id/test', requireRole('admin'), testIntegrationLimiter, async (re
   if (!integration) return res.status(404).json({ error: 'Integração não encontrada' });
 
   const flags = (() => { try { return JSON.parse(integration.include_flags || '{}'); } catch { return {}; } })();
+  const events: string[] = (() => { try { return JSON.parse(integration.events || '[]'); } catch { return ['execution.failed']; } })();
 
-  // Sample steps used when flags.steps or flags.detailed_report are enabled
+  // Determine which event to simulate — prefer the first configured event
+  const simulatedEvent = events[0] || 'execution.failed';
+
+  // Derive status from the simulated event
+  const eventStatusMap: Record<string, string> = {
+    'execution.passed': 'passed',
+    'execution.failed': 'failed',
+    'execution.error': 'error',
+    'execution.started': 'running',
+    'execution.queued': 'queued',
+    'execution.retried': 'failed',
+    'execution.flaky': 'failed',
+    'plan.finished': 'failed',
+    'plan.started': 'running',
+    'schedule.triggered': 'running',
+  };
+  const simulatedStatus = eventStatusMap[simulatedEvent] || 'failed';
+
+  // Sample steps — always built, included only if flags say so
   const sampleSteps = [
     { name: 'Abrir página de login', status: 'passed', duration_ms: 312 },
-    { name: 'Preencher email', status: 'passed', duration_ms: 45 },
-    { name: 'Preencher senha', status: 'passed', duration_ms: 38 },
-    { name: 'Clicar em Entrar', status: 'passed', duration_ms: 890 },
-    { name: 'Verificar redirecionamento para /dashboard', status: 'passed', duration_ms: 210 },
-    { name: 'Verificar título da página', status: 'failed', duration_ms: 55, error_message: 'Expected "Dashboard" but got "Painel"' },
+    { name: 'Preencher credenciais', status: 'passed', duration_ms: 83 },
+    { name: 'Submeter formulário', status: 'passed', duration_ms: 890 },
+    { name: 'Aguardar redirecionamento', status: 'passed', duration_ms: 210 },
+    { name: 'Verificar URL /dashboard', status: 'passed', duration_ms: 44 },
+    { name: 'Verificar título da página', status: simulatedStatus === 'passed' ? 'passed' : 'failed', duration_ms: 55,
+      error_message: simulatedStatus !== 'passed' ? 'Expected "Dashboard" but got "Painel"' : undefined },
   ];
 
+  const projectName = integration.project_id
+    ? (db.prepare('SELECT name FROM projects WHERE id = ?').get(integration.project_id) as any)?.name || 'Demo'
+    : 'Demo';
+
   const data: Parameters<typeof buildPayload>[1] = {
-    status: 'failed',
-    title: 'Login com credenciais válidas [TEST]',
-    project: integration.project_id
-      ? (db.prepare('SELECT name FROM projects WHERE id = ?').get(integration.project_id) as any)?.name || 'Projeto'
-      : 'Demo',
+    event: simulatedEvent,
+    execution_id: 'test-exec-00000000',
+    status: simulatedStatus,
+    title: `[TESTE] Login com credenciais válidas`,
+    project: projectName,
     duration_ms: 1550,
-    from_schedule: false,
+    from_schedule: simulatedEvent === 'schedule.triggered',
   };
 
-  if (flags.steps) {
-    data.steps = sampleSteps;
-  }
+  // ── Populate each flag exactly as the real dispatcher would ──
 
   if (flags.detailed_report) {
+    const passed = sampleSteps.filter(s => s.status === 'passed').length;
+    const failed = sampleSteps.filter(s => s.status === 'failed').length;
+    const total = sampleSteps.length;
     data.detailed_report = {
-      total_steps: sampleSteps.length,
-      passed_steps: sampleSteps.filter(s => s.status === 'passed').length,
-      failed_steps: sampleSteps.filter(s => s.status === 'failed').length,
+      total_steps: total,
+      passed_steps: passed,
+      failed_steps: failed,
       skipped_steps: 0,
+      pass_rate: parseFloat(((passed / total) * 100).toFixed(1)),
     };
   }
 
+  if (flags.steps) {
+    data.steps = sampleSteps.map(s => ({
+      name: s.name,
+      status: s.status,
+      duration_ms: s.duration_ms,
+      error_message: s.error_message,
+    }));
+  }
+
+  if (flags.error_summary && simulatedStatus !== 'passed') {
+    const failedStep = sampleSteps.find(s => s.status === 'failed');
+    data.error_summary = failedStep?.error_message || 'Timeout ao aguardar elemento #submit-btn (5000ms)';
+  }
+
+  if (flags.environment_info) {
+    data.environment = 'Staging — QA';
+  }
+
+  if (flags.browser_info) {
+    data.browsers = ['chromium', 'firefox'];
+  }
+
+  if (flags.retry_info) {
+    data.retry_count = 1;
+  }
+
+  if (flags.flaky_detection) {
+    data.flaky = simulatedEvent === 'execution.flaky' || simulatedEvent === 'execution.retried';
+  }
+
   if (flags.artifacts) {
-    data.artifacts = ['video-login-test.mp4', 'screenshot-step-6-fail.png'];
+    data.artifact_urls = [
+      { filename: 'video-login-test.mp4', url: 'https://gostate.example/artifacts/video-login-test.mp4' },
+      { filename: 'screenshot-step-6-fail.png', url: 'https://gostate.example/artifacts/screenshot-step-6-fail.png' },
+    ];
+    data.artifacts = data.artifact_urls.map(a => a.filename);
   }
 
   try {
