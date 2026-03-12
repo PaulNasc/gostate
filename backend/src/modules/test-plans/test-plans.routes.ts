@@ -2,8 +2,11 @@
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../../db/schema';
-import { authenticate, AuthRequest } from '../../shared/middleware/auth';
+import { authenticate, requireRole, AuthRequest } from '../../shared/middleware/auth';
+import { dispatchIntegrations } from '../../shared/integrations-dispatcher';
 import { getIo } from '../../realtime/gateway';
+import { dispatchToAgent } from '../../shared/dispatch';
+import { parseJSON } from '../../shared/utils';
 
 const router = Router();
 router.use(authenticate);
@@ -87,7 +90,7 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
     WHERE tp.id = ?
   `).get(req.params.id) as any;
 
-  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
 
   const tcIds: string[] = (() => { try { return JSON.parse(plan.test_case_ids || '[]'); } catch { return []; } })();
 
@@ -120,7 +123,7 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
 router.post('/', (req: AuthRequest, res: Response) => {
   const parse = CreatePlanSchema.safeParse(req.body);
   if (!parse.success) {
-    res.status(400).json({ error: 'Dados invÃƒÂ¡lidos', code: 'VALIDATION_ERROR', details: parse.error.flatten() });
+    res.status(400).json({ error: 'Dados inválidos', code: 'VALIDATION_ERROR', details: parse.error.flatten() });
     return;
   }
 
@@ -128,7 +131,7 @@ router.post('/', (req: AuthRequest, res: Response) => {
   const { name, description, project_id, test_case_ids, max_parallel } = parse.data;
 
   const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(project_id);
-  if (!project) { res.status(404).json({ error: 'Projeto nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
+  if (!project) { res.status(404).json({ error: 'Projeto não encontrado', code: 'NOT_FOUND' }); return; }
 
   const id = uuidv4();
   const now = new Date().toISOString();
@@ -148,13 +151,13 @@ router.post('/', (req: AuthRequest, res: Response) => {
 router.put('/:id', (req: AuthRequest, res: Response) => {
   const parse = UpdatePlanSchema.safeParse(req.body);
   if (!parse.success) {
-    res.status(400).json({ error: 'Dados invÃƒÂ¡lidos', code: 'VALIDATION_ERROR', details: parse.error.flatten() });
+    res.status(400).json({ error: 'Dados inválidos', code: 'VALIDATION_ERROR', details: parse.error.flatten() });
     return;
   }
 
   const db = getDb();
   const plan = db.prepare('SELECT * FROM test_plans WHERE id = ?').get(req.params.id) as any;
-  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
 
   const { name, description, test_case_ids, max_parallel } = parse.data;
   const now = new Date().toISOString();
@@ -189,16 +192,16 @@ router.put('/:id', (req: AuthRequest, res: Response) => {
 router.delete('/:id', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const plan = db.prepare('SELECT id FROM test_plans WHERE id = ?').get(req.params.id);
-  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
   db.prepare('DELETE FROM test_plans WHERE id = ?').run(req.params.id);
   res.status(204).end();
 });
 
-// POST /api/test-plans/:id/runs Ã¢â‚¬â€ dispatch all test cases as a batch
+// POST /api/test-plans/:id/runs — dispatch all test cases as a batch
 router.post('/:id/runs', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const plan = db.prepare('SELECT * FROM test_plans WHERE id = ?').get(req.params.id) as any;
-  if (!plan) { res.status(404).json({ error: 'Plano nÃƒÂ£o encontrado', code: 'NOT_FOUND' }); return; }
+  if (!plan) { res.status(404).json({ error: 'Plano não encontrado', code: 'NOT_FOUND' }); return; }
 
   const tcIds: string[] = (() => { try { return JSON.parse(plan.test_case_ids || '[]'); } catch { return []; } })();
   if (tcIds.length === 0) {
@@ -234,21 +237,10 @@ router.post('/:id/runs', (req: AuthRequest, res: Response) => {
       `).run(execId, plan.id, tcId, agent?.id || null, req.user!.id, video_enabled ? 1 : 0, screenshot_enabled ? 1 : 0, browsersJson, now);
 
       if (agent) {
-        db.prepare("UPDATE agents SET status = 'busy' WHERE id = ?").run(agent.id);
-        const steps = (() => { try { return JSON.parse(tc.steps || '[]'); } catch { return []; } })();
-        io.to(`agent:${agent.id}`).emit('exec:dispatch', {
-          execId,
-          test_case_id: tcId,
-          script_id: null,
-          scriptContent: '',
-          steps,
-          framework: 'playwright',
-          language: 'js',
-          browsers,
-          videoEnabled: video_enabled,
-          screenshotEnabled: screenshot_enabled,
-          timeout: 60000,
-          backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
+        const steps = parseJSON<any[]>(tc.steps, []);
+        dispatchToAgent(db, io, agent.id, {
+          execId, test_case_id: tcId, script_id: null,
+          steps, browsers, videoEnabled: video_enabled, screenshotEnabled: screenshot_enabled,
         });
       }
     }
@@ -382,12 +374,10 @@ router.post('/:id/runs/retry', (req: AuthRequest, res: Response) => {
       `).run(execId, plan.id, tcId, agent?.id || null, req.user!.id, video_enabled ? 1 : 0, screenshot_enabled ? 1 : 0, browsersJson, now);
 
       if (agent) {
-        db.prepare("UPDATE agents SET status = 'busy' WHERE id = ?").run(agent.id);
-        const steps = (() => { try { return JSON.parse(tc.steps || '[]'); } catch { return []; } })();
-        io.to(`agent:${agent.id}`).emit('exec:dispatch', {
-          execId, test_case_id: tcId, script_id: null, scriptContent: '', steps,
-          framework: 'playwright', language: 'js', browsers, videoEnabled: video_enabled, screenshotEnabled: screenshot_enabled,
-          timeout: 60000, backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
+        const steps = parseJSON<any[]>(tc.steps, []);
+        dispatchToAgent(db, io, agent.id, {
+          execId, test_case_id: tcId, script_id: null,
+          steps, browsers, videoEnabled: video_enabled, screenshotEnabled: screenshot_enabled,
         });
       }
     }
@@ -400,6 +390,62 @@ router.post('/:id/runs/retry', (req: AuthRequest, res: Response) => {
     data: { plan_id: plan.id, execution_ids: executionIds, total: executionIds.length },
   });
 });
+
+// Called by executions PATCH /status when a plan execution finishes — checks if whole plan is done
+export async function checkPlanCompletion(db: any, planId: string): Promise<void> {
+  const stats = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status IN ('running','queued') THEN 1 ELSE 0 END) AS running
+    FROM executions
+    WHERE test_plan_id = ?
+      AND substr(created_at, 1, 16) >= (
+        SELECT substr(created_at, 1, 16) FROM executions
+        WHERE test_plan_id = ? ORDER BY created_at DESC LIMIT 1
+      )
+  `).get(planId, planId) as any;
+
+  if (!stats || stats.running > 0 || stats.total === 0) return;
+
+  const plan = db.prepare(
+    'SELECT tp.id, tp.name, tp.project_id, p.name AS project_name FROM test_plans tp LEFT JOIN projects p ON p.id = tp.project_id WHERE tp.id = ?'
+  ).get(planId) as any;
+  if (!plan) return;
+
+  const batchStats = db.prepare(`
+    SELECT
+      SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END) AS passed,
+      SUM(CASE WHEN status IN ('failed','error') THEN 1 ELSE 0 END) AS failed,
+      COUNT(*) AS total
+    FROM executions
+    WHERE test_plan_id = ?
+      AND substr(created_at, 1, 16) >= (
+        SELECT substr(created_at, 1, 16) FROM executions
+        WHERE test_plan_id = ? ORDER BY created_at DESC LIMIT 1
+      )
+  `).get(planId, planId) as any;
+
+  const overallStatus = (batchStats?.failed ?? 0) > 0 ? 'failed' : 'passed';
+
+  await dispatchIntegrations({
+    db,
+    event: 'plan.finished',
+    project_id: plan.project_id,
+    data: {
+      status: overallStatus,
+      title: `Plano: ${plan.name}`,
+      project: plan.project_name || '—',
+      duration_ms: 0,
+      from_schedule: false,
+      detailed_report: {
+        total_steps: batchStats?.total ?? 0,
+        passed_steps: batchStats?.passed ?? 0,
+        failed_steps: batchStats?.failed ?? 0,
+        skipped_steps: 0,
+      },
+    },
+  });
+}
 
 export default router;
 

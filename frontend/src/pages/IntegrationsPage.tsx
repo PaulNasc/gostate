@@ -35,6 +35,7 @@ const TYPES = [
     value: 'discord', label: 'Discord',
     color: 'text-indigo-400', bg: 'bg-indigo-500/10 border-indigo-500/20',
     urlPlaceholder: 'https://discord.com/api/webhooks/ID/TOKEN',
+    docUrl: 'https://support.discord.com/hc/en-us/articles/228383668',
     steps: [
       'Abra o Discord e vá até o canal desejado.',
       'Clique em "Editar Canal" → "Integrações" → "Webhooks".',
@@ -47,6 +48,7 @@ const TYPES = [
     value: 'slack', label: 'Slack',
     color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/20',
     urlPlaceholder: 'https://hooks.slack.com/services/T.../B.../...',
+    docUrl: 'https://api.slack.com/messaging/webhooks',
     steps: [
       'Acesse api.slack.com/apps e clique em "Create New App".',
       'Escolha "From scratch", dê um nome e selecione o workspace.',
@@ -56,9 +58,22 @@ const TYPES = [
     ],
   },
   {
+    value: 'mattermost', label: 'Mattermost',
+    color: 'text-blue-300', bg: 'bg-blue-400/10 border-blue-400/20',
+    urlPlaceholder: 'https://mattermost.empresa.com/hooks/TOKEN',
+    docUrl: 'https://docs.mattermost.com/developer/webhooks-incoming.html',
+    steps: [
+      'No Mattermost, vá em Menu → Integrações → Incoming Webhooks.',
+      'Clique em "Add Incoming Webhook" e selecione o canal.',
+      'Defina um título e salve.',
+      'Copie a URL gerada e cole no campo abaixo.',
+    ],
+  },
+  {
     value: 'teams', label: 'Microsoft Teams',
     color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20',
     urlPlaceholder: 'https://outlook.office.com/webhook/...',
+    docUrl: 'https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook',
     steps: [
       'No Teams, vá até o canal onde quer receber notificações.',
       'Clique em "..." → "Conectores".',
@@ -71,6 +86,7 @@ const TYPES = [
     value: 'telegram', label: 'Telegram',
     color: 'text-sky-400', bg: 'bg-sky-500/10 border-sky-500/20',
     urlPlaceholder: 'https://api.telegram.org/botTOKEN/sendMessage?chat_id=ID',
+    docUrl: 'https://core.telegram.org/bots/api',
     steps: [
       'Abra o Telegram e converse com @BotFather.',
       'Use o comando /newbot e siga as instruções para criar seu bot.',
@@ -81,24 +97,74 @@ const TYPES = [
   },
   {
     value: 'pagerduty', label: 'PagerDuty',
-    color: 'text-green-400', bg: 'bg-green-500/10 border-green-500/20',
+    color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20',
     urlPlaceholder: 'https://events.pagerduty.com/v2/enqueue',
+    docUrl: 'https://developer.pagerduty.com/docs/ZG9jOjExMDI5NTgw-send-an-alert-event',
     steps: [
       'No PagerDuty, vá em "Services" → "Service Directory".',
       'Selecione ou crie um serviço, depois vá em "Integrations".',
       'Adicione uma integração do tipo "Events API v2".',
       'Copie a "Integration Key" gerada.',
-      'Use a URL: https://events.pagerduty.com/v2/enqueue (a chave vai no corpo da requisição — configure via webhook genérico se necessário).',
+      'Use a URL: https://events.pagerduty.com/v2/enqueue',
+    ],
+  },
+  {
+    value: 'opsgenie', label: 'Opsgenie',
+    color: 'text-orange-300', bg: 'bg-orange-400/10 border-orange-400/20',
+    urlPlaceholder: 'https://api.opsgenie.com/v2/alerts',
+    docUrl: 'https://docs.opsgenie.com/docs/alert-api',
+    steps: [
+      'No Opsgenie, acesse Settings → API key management.',
+      'Crie ou copie uma API key existente.',
+      'Use a URL: https://api.opsgenie.com/v2/alerts',
+      'Adicione o header Authorization: GenieKey SEU_TOKEN via webhook genérico, ou configure diretamente.',
+    ],
+  },
+  {
+    value: 'datadog', label: 'Datadog',
+    color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20',
+    urlPlaceholder: 'https://api.datadoghq.com/api/v1/events',
+    docUrl: 'https://docs.datadoghq.com/api/latest/events/',
+    steps: [
+      'No Datadog, acesse Organization Settings → API Keys.',
+      'Crie uma nova API key.',
+      'Use a URL: https://api.datadoghq.com/api/v1/events?api_key=SEU_TOKEN',
+      'Cole a URL completa com a API key no campo abaixo.',
+    ],
+  },
+  {
+    value: 'grafana', label: 'Grafana',
+    color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20',
+    urlPlaceholder: 'https://grafana.empresa.com/api/alerts/webhook',
+    docUrl: 'https://grafana.com/docs/grafana/latest/alerting/manage-notifications/webhook-notifier/',
+    steps: [
+      'No Grafana, acesse Alerting → Notification channels.',
+      'Crie um novo canal do tipo "Webhook".',
+      'Configure a URL de callback do seu Grafana.',
+      'Copie a URL do webhook e cole no campo abaixo.',
+    ],
+  },
+  {
+    value: 'linear', label: 'Linear',
+    color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20',
+    urlPlaceholder: '',
+    docUrl: 'https://linear.app/docs/webhooks',
+    steps: [
+      'No Linear, acesse Settings → API → Personal API keys.',
+      'Crie uma nova API key.',
+      'O goState criará issues automaticamente quando testes falharem.',
+      'Defina o Team ID e o label no campo de configuração.',
     ],
   },
   {
     value: 'webhook', label: 'Webhook Genérico',
     color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/20',
     urlPlaceholder: 'https://seu-servidor.com/webhook',
+    docUrl: '',
     steps: [
       'Configure um endpoint HTTP POST no seu servidor.',
-      'O goState enviará um JSON com: event, execution_id, status, test_case, project, timestamp.',
-      'Valide a autenticidade verificando o header X-GoState-Event.',
+      'O goState enviará um JSON com: event, execution_id, status, title, project, duration_ms, timestamp.',
+      'Campos opcionais: environment, browsers, agent, retry_count, flaky, error_summary, report, steps, artifacts.',
       'Responda com status 2xx para confirmar recebimento.',
       'Cole a URL do seu endpoint no campo abaixo.',
     ],
@@ -107,6 +173,7 @@ const TYPES = [
     value: 'smtp', label: 'E-mail (SMTP)',
     color: 'text-orange-400', bg: 'bg-orange-500/10 border-orange-500/20',
     urlPlaceholder: '',
+    docUrl: '',
     steps: [
       'Informe o host SMTP do seu provedor (ex: smtp.gmail.com, smtp.sendgrid.net).',
       'Use a porta 587 (TLS) ou 465 (SSL). Para Gmail, use 587 com TLS.',
@@ -117,12 +184,35 @@ const TYPES = [
   },
 ];
 
-const EVENTS = [
-  { value: 'execution.passed', label: 'Passou', icon: CheckCircle2, color: 'text-green-500', activeBg: 'bg-green-500/15 border-green-500/40 text-green-600 dark:text-green-400' },
-  { value: 'execution.failed', label: 'Falhou', icon: XCircle, color: 'text-red-500', activeBg: 'bg-red-500/15 border-red-500/40 text-red-600 dark:text-red-400' },
-  { value: 'execution.error', label: 'Erro', icon: AlertCircle, color: 'text-amber-500', activeBg: 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400' },
-  { value: 'execution.started', label: 'Iniciada', icon: Play, color: 'text-blue-500', activeBg: 'bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-400' },
+const EVENT_GROUPS = [
+  {
+    group: 'Execução',
+    events: [
+      { value: 'execution.passed',   label: 'Passou',         icon: CheckCircle2, activeBg: 'bg-green-500/15 border-green-500/40 text-green-600 dark:text-green-400' },
+      { value: 'execution.failed',   label: 'Falhou',         icon: XCircle,      activeBg: 'bg-red-500/15 border-red-500/40 text-red-600 dark:text-red-400' },
+      { value: 'execution.error',    label: 'Erro',           icon: AlertCircle,  activeBg: 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400' },
+      { value: 'execution.started',  label: 'Iniciada',       icon: Play,         activeBg: 'bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-400' },
+      { value: 'execution.queued',   label: 'Na fila',        icon: Zap,          activeBg: 'bg-slate-500/15 border-slate-500/40 text-slate-400' },
+      { value: 'execution.retried',  label: 'Retry',          icon: Play,         activeBg: 'bg-violet-500/15 border-violet-500/40 text-violet-400' },
+      { value: 'execution.flaky',    label: 'Flaky',          icon: AlertCircle,  activeBg: 'bg-yellow-500/15 border-yellow-500/40 text-yellow-500' },
+    ],
+  },
+  {
+    group: 'Plano de Testes',
+    events: [
+      { value: 'plan.started',  label: 'Plano iniciado',   icon: Play,          activeBg: 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400' },
+      { value: 'plan.finished', label: 'Plano concluído',  icon: CheckCircle2,  activeBg: 'bg-teal-500/15 border-teal-500/40 text-teal-400' },
+    ],
+  },
+  {
+    group: 'Agendamentos',
+    events: [
+      { value: 'schedule.triggered', label: 'Agendamento disparado', icon: Bell, activeBg: 'bg-orange-500/15 border-orange-500/40 text-orange-400' },
+    ],
+  },
 ];
+
+const EVENTS = EVENT_GROUPS.flatMap(g => g.events);
 
 function CopyBtn({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -142,23 +232,53 @@ const INCLUDE_FLAGS_OPTIONS = [
     key: 'detailed_report',
     icon: FileText,
     label: 'Relatório detalhado',
-    description: 'Total de steps, quantos passaram/falharam/pularam',
+    description: 'Total de steps, quantos passaram/falharam/pularam + taxa de sucesso',
   },
   {
     key: 'steps',
     icon: List,
     label: 'Lista de steps',
-    description: 'Cada step com status, duração e erro (colapsível no Discord)',
+    description: 'Cada step com status, duração e erro (colapsível no Discord/Slack)',
+  },
+  {
+    key: 'error_summary',
+    icon: AlertCircle,
+    label: 'Resumo do erro',
+    description: 'Mensagem do primeiro step falho ou erro de execução',
+  },
+  {
+    key: 'environment_info',
+    icon: Globe,
+    label: 'Info de ambiente',
+    description: 'Nome do ambiente de variáveis usado na execução',
+  },
+  {
+    key: 'browser_info',
+    icon: Eye,
+    label: 'Info de browser',
+    description: 'Qual(is) browser(s) foram usados na execução',
+  },
+  {
+    key: 'retry_info',
+    icon: Play,
+    label: 'Info de retry',
+    description: 'Número de tentativas quando a execução usou retry automático',
+  },
+  {
+    key: 'flaky_detection',
+    icon: Zap,
+    label: 'Detecção de flaky',
+    description: 'Indica se a execução foi marcada como instável (passou e falhou em retries)',
   },
   {
     key: 'artifacts',
     icon: Paperclip,
     label: 'Artefatos',
-    description: 'Nomes dos arquivos gerados (vídeos, screenshots)',
+    description: 'Links dos arquivos gerados (vídeos, screenshots) — com URL quando disponível',
   },
 ];
 
-const EMPTY_FLAGS = { detailed_report: false, steps: false, artifacts: false };
+const EMPTY_FLAGS = { detailed_report: false, steps: false, artifacts: false, environment_info: false, browser_info: false, error_summary: false, retry_info: false, flaky_detection: false };
 const EMPTY_SMTP = { host: '', port: 587, secure: false, user: '', pass: '', from: '', to: '', subject_prefix: '[goState]' };
 const EMPTY_FORM = { type: 'discord', label: '', webhook_url: '', events: ['execution.failed'] as string[], enabled: true, project_id: '' as string | null, include_flags: EMPTY_FLAGS, smtp_config: { ...EMPTY_SMTP } };
 
@@ -271,7 +391,7 @@ export default function IntegrationsPage() {
         <div>
           <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>Integrações</h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            Notificações para Discord, Slack, Teams, Telegram, PagerDuty e webhooks
+            Notificações para Discord, Slack, Teams, Telegram, PagerDuty, Mattermost, Opsgenie, Datadog, Grafana, Linear e webhooks
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -334,6 +454,17 @@ export default function IntegrationsPage() {
             </button>
             {showGuide && (
               <div className="px-4 py-3 space-y-2" style={{ background: 'var(--surface-1)' }}>
+                {selectedType.docUrl && (
+                  <a
+                    href={selectedType.docUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1.5 text-xs mt-2"
+                    style={{ color: 'var(--primary)' }}
+                  >
+                    <ExternalLink className="w-3 h-3" /> Documentação oficial do {selectedType.label}
+                  </a>
+                )}
                 {selectedType.steps.map((step, i) => (
                   <div key={i} className="flex items-start gap-3">
                     <span
@@ -345,23 +476,6 @@ export default function IntegrationsPage() {
                     <p className="text-sm leading-relaxed" style={{ color: 'var(--text)' }}>{step}</p>
                   </div>
                 ))}
-                {selectedType.value !== 'webhook' && (
-                  <a
-                    href={
-                      selectedType.value === 'discord' ? 'https://support.discord.com/hc/en-us/articles/228383668' :
-                      selectedType.value === 'slack' ? 'https://api.slack.com/messaging/webhooks' :
-                      selectedType.value === 'teams' ? 'https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/how-to/add-incoming-webhook' :
-                      selectedType.value === 'telegram' ? 'https://core.telegram.org/bots/api' :
-                      'https://developer.pagerduty.com/docs/ZG9jOjExMDI5NTgw-send-an-alert-event'
-                    }
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 text-xs mt-2"
-                    style={{ color: 'var(--primary)' }}
-                  >
-                    <ExternalLink className="w-3 h-3" /> Documentação oficial do {selectedType.label}
-                  </a>
-                )}
               </div>
             )}
           </div>
@@ -513,23 +627,30 @@ export default function IntegrationsPage() {
             <label className="block text-xs font-medium mb-2 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
               <Bell className="w-3 h-3" /> Eventos a notificar
             </label>
-            <div className="flex flex-wrap gap-2">
-              {EVENTS.map(ev => {
-                const Icon = ev.icon;
-                const active = form.events.includes(ev.value);
-                return (
-                  <button
-                    key={ev.value}
-                    type="button"
-                    onClick={() => toggleEvent(ev.value)}
-                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${active ? ev.activeBg : ''}`}
-                    style={!active ? { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'transparent' } : {}}
-                  >
-                    <Icon className={`w-3.5 h-3.5 ${active ? '' : 'opacity-50'}`} />
-                    {ev.label}
-                  </button>
-                );
-              })}
+            <div className="space-y-3">
+              {EVENT_GROUPS.map(group => (
+                <div key={group.group}>
+                  <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>{group.group}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.events.map(ev => {
+                      const Icon = ev.icon;
+                      const active = form.events.includes(ev.value);
+                      return (
+                        <button
+                          key={ev.value}
+                          type="button"
+                          onClick={() => toggleEvent(ev.value)}
+                          className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${active ? ev.activeBg : ''}`}
+                          style={!active ? { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'transparent' } : {}}
+                        >
+                          <Icon className={`w-3.5 h-3.5 ${active ? '' : 'opacity-50'}`} />
+                          {ev.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
             {form.events.length === 0 && (
               <p className="text-xs text-amber-500 mt-1.5">Selecione pelo menos um evento.</p>
@@ -582,29 +703,50 @@ export default function IntegrationsPage() {
               const typeGradient: Record<string, string> = {
                 discord: 'from-indigo-600/30 to-indigo-900/60',
                 slack: 'from-green-600/30 to-green-900/60',
+                mattermost: 'from-blue-400/20 to-blue-900/50',
                 teams: 'from-blue-600/30 to-blue-900/60',
                 telegram: 'from-sky-600/30 to-sky-900/60',
                 pagerduty: 'from-emerald-600/30 to-emerald-900/60',
+                opsgenie: 'from-orange-400/20 to-orange-900/50',
+                datadog: 'from-purple-600/30 to-purple-900/60',
+                grafana: 'from-orange-600/30 to-orange-900/60',
+                linear: 'from-violet-600/30 to-violet-900/60',
                 webhook: 'from-slate-600/30 to-slate-900/60',
                 smtp: 'from-orange-600/30 to-orange-900/60',
+                jira: 'from-blue-700/30 to-blue-950/60',
+                github: 'from-slate-500/30 to-slate-900/60',
               };
               const typeBorderColor: Record<string, string> = {
                 discord: '#6366f150',
                 slack: '#22c55e50',
+                mattermost: '#60a5fa50',
                 teams: '#3b82f650',
                 telegram: '#0ea5e950',
                 pagerduty: '#10b98150',
+                opsgenie: '#fb923c50',
+                datadog: '#a855f750',
+                grafana: '#f9731650',
+                linear: '#8b5cf650',
                 webhook: '#64748b50',
                 smtp: '#f9731650',
+                jira: '#2563eb50',
+                github: '#94a3b850',
               };
               const typeIconBg: Record<string, string> = {
                 discord: 'rgba(99,102,241,0.2)',
                 slack: 'rgba(34,197,94,0.2)',
+                mattermost: 'rgba(96,165,250,0.2)',
                 teams: 'rgba(59,130,246,0.2)',
                 telegram: 'rgba(14,165,233,0.2)',
                 pagerduty: 'rgba(16,185,129,0.2)',
+                opsgenie: 'rgba(251,146,60,0.2)',
+                datadog: 'rgba(168,85,247,0.2)',
+                grafana: 'rgba(249,115,22,0.2)',
+                linear: 'rgba(139,92,246,0.2)',
                 webhook: 'rgba(100,116,139,0.2)',
                 smtp: 'rgba(249,115,22,0.2)',
+                jira: 'rgba(37,99,235,0.2)',
+                github: 'rgba(148,163,184,0.2)',
               };
 
               const CARD_HEIGHT = '200px';
@@ -829,19 +971,26 @@ export default function IntegrationsPage() {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Eventos</label>
-                      <div className="flex flex-wrap gap-1.5">
-                        {EVENTS.map(ev => {
-                          const Icon = ev.icon;
-                          const active = editForm.events.includes(ev.value);
-                          return (
-                            <button key={ev.value} type="button" onClick={() => toggleEditEvent(ev.value)}
-                              className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg border font-medium transition-all ${active ? ev.activeBg : ''}`}
-                              style={!active ? { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'transparent' } : {}}>
-                              <Icon className="w-3 h-3" />{ev.label}
-                            </button>
-                          );
-                        })}
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Eventos</label>
+                      <div className="space-y-2">
+                        {EVENT_GROUPS.map(group => (
+                          <div key={group.group}>
+                            <p className="text-xs mb-1" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>{group.group}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {group.events.map(ev => {
+                                const Icon = ev.icon;
+                                const active = editForm.events.includes(ev.value);
+                                return (
+                                  <button key={ev.value} type="button" onClick={() => toggleEditEvent(ev.value)}
+                                    className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg border font-medium transition-all ${active ? ev.activeBg : ''}`}
+                                    style={!active ? { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'transparent' } : {}}>
+                                    <Icon className="w-3 h-3" />{ev.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                     <div>

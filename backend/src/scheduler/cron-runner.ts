@@ -2,6 +2,8 @@ import cron from 'node-cron';
 import { getDb } from '../db/schema';
 import { getIo } from '../realtime/gateway';
 import { v4 as uuidv4 } from 'uuid';
+import { dispatchToAgent } from '../shared/dispatch';
+import { parseJSON } from '../shared/utils';
 
 let started = false;
 
@@ -76,14 +78,10 @@ function runDueSchedules() {
             VALUES (?, ?, ?, ?, ?, 'queued', 0, 1, ?, ?, ?)
           `).run(execId, plan.id, tcId, agent.id, adminUser.id, browsersJson, now, sched.id);
 
-          db.prepare("UPDATE agents SET status = 'busy' WHERE id = ?").run(agent.id);
-
-          const steps = (() => { try { return JSON.parse(tc.steps || '[]'); } catch { return []; } })();
-          io.to(`agent:${agent.id}`).emit('exec:dispatch', {
-            execId, test_case_id: tcId, script_id: null, scriptContent: '', steps,
-            framework: 'playwright', language: 'js', browsers, videoEnabled: false,
-            screenshotEnabled: true,
-            timeout: 60000, backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
+          const steps = parseJSON<any[]>(tc.steps, []);
+          dispatchToAgent(db, io, agent.id, {
+            execId, test_case_id: tcId, script_id: null,
+            steps, browsers, videoEnabled: false, screenshotEnabled: true,
           });
         }
         db.prepare('UPDATE schedules SET last_run = ? WHERE id = ?').run(now, sched.id);
@@ -120,33 +118,25 @@ function runDueSchedules() {
       `).run(id, sched.test_case_id || null, schedScriptId || null, agent.id, adminUser.id, browsersJson, now, sched.id);
 
       db.prepare('UPDATE schedules SET last_run = ? WHERE id = ?').run(now, sched.id);
-      db.prepare("UPDATE agents SET status = 'busy' WHERE id = ?").run(agent.id);
-    });
+      });
 
     dispatchSingle();
 
     const steps = (() => {
       if (!sched.test_case_id) return [];
       const tc = db.prepare('SELECT steps FROM test_cases WHERE id = ?').get(sched.test_case_id) as any;
-      try { return tc ? JSON.parse(tc.steps || '[]') : []; } catch { return []; }
+      return parseJSON<any[]>(tc?.steps, []);
     })();
 
-    const runConfig = {
+    dispatchToAgent(db, io, agent.id, {
       execId: id,
       test_case_id: sched.test_case_id || null,
       script_id: schedScriptId || null,
-      scriptContent: '',
       steps,
-      framework: 'playwright',
-      language: 'js',
       browsers,
       videoEnabled: false,
       screenshotEnabled: true,
-      timeout: 60000,
-      backendUrl: process.env.BACKEND_URL || 'http://localhost:4000',
-    };
-
-    io.to(`agent:${agent.id}`).emit('exec:dispatch', runConfig);
+    });
 
     console.log(`[CRON] Schedule "${sched.label}" disparado → exec ${id} (agente: ${agent.name})`);
   }

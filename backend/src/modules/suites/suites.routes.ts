@@ -2,10 +2,11 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../../db/schema';
-import { authenticate, AuthRequest } from '../../shared/middleware/auth';
+import { authenticate, requireProjectAccess, AuthRequest } from '../../shared/middleware/auth';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+router.use(requireProjectAccess('viewer'));
 
 const SuiteSchema = z.object({
   name: z.string().min(1).max(100),

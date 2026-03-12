@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../../db/schema';
 import { authenticate, requireRole, AuthRequest } from '../../shared/middleware/auth';
+import { getIo } from '../../realtime/gateway';
+import { parseJSON } from '../../shared/utils';
 
 const router = Router();
 router.use(authenticate);
@@ -20,7 +22,7 @@ const CreateAgentSchema = z.object({
 router.get('/', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const agents = db.prepare('SELECT id, name, status, capabilities, deploy_config, last_heartbeat, created_at FROM agents ORDER BY created_at DESC').all();
-  res.json({ agents: agents.map((a: any) => ({ ...a, capabilities: parseJSON(a.capabilities), deploy_config: parseJSON(a.deploy_config || '{}') })) });
+  res.json({ agents: agents.map((a: any) => ({ ...a, capabilities: parseJSON(a.capabilities, {}), deploy_config: parseJSON(a.deploy_config || '{}', {}) })) });
 });
 
 router.post('/', requireRole('admin'), (req: AuthRequest, res: Response) => {
@@ -38,7 +40,7 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const agent = db.prepare('SELECT id, name, status, capabilities, deploy_config, last_heartbeat, created_at FROM agents WHERE id = ?').get(req.params.id) as any;
   if (!agent) { res.status(404).json({ error: 'Agente não encontrado' }); return; }
-  res.json({ agent: { ...agent, capabilities: parseJSON(agent.capabilities), deploy_config: parseJSON(agent.deploy_config || '{}') } });
+  res.json({ agent: { ...agent, capabilities: parseJSON(agent.capabilities, {}), deploy_config: parseJSON(agent.deploy_config || '{}', {}) } });
 });
 
 router.get('/:id/token', requireRole('admin'), (req: AuthRequest, res: Response) => {
@@ -62,13 +64,13 @@ router.put('/:id', requireRole('admin'), (req: AuthRequest, res: Response) => {
   }
 
   if (capabilities !== undefined) {
-    const current = parseJSON(agent.capabilities);
+    const current = parseJSON<Record<string, unknown>>(agent.capabilities, {});
     const merged = { ...current, ...capabilities };
     db.prepare('UPDATE agents SET capabilities = ? WHERE id = ?').run(JSON.stringify(merged), req.params.id);
   }
 
   const updated = db.prepare('SELECT id, name, status, capabilities, deploy_config, last_heartbeat, created_at FROM agents WHERE id = ?').get(req.params.id) as any;
-  res.json({ agent: { ...updated, capabilities: parseJSON(updated.capabilities), deploy_config: parseJSON(updated.deploy_config || '{}') } });
+  res.json({ agent: { ...updated, capabilities: parseJSON(updated.capabilities, {}), deploy_config: parseJSON(updated.deploy_config || '{}', {}) } });
 });
 
 router.put('/:id/deploy-config', requireRole('admin'), (req: AuthRequest, res: Response) => {
@@ -81,7 +83,7 @@ router.put('/:id/deploy-config', requireRole('admin'), (req: AuthRequest, res: R
   for (const key of allowed) {
     if (req.body[key] !== undefined) config[key] = String(req.body[key]);
   }
-  const current = parseJSON((db.prepare('SELECT deploy_config FROM agents WHERE id = ?').get(req.params.id) as any)?.deploy_config || '{}');
+  const current = parseJSON<Record<string, unknown>>((db.prepare('SELECT deploy_config FROM agents WHERE id = ?').get(req.params.id) as any)?.deploy_config || '{}', {});
   const merged = { ...current, ...config };
   db.prepare('UPDATE agents SET deploy_config = ? WHERE id = ?').run(JSON.stringify(merged), req.params.id);
   res.json({ deploy_config: merged });
@@ -92,7 +94,7 @@ router.get('/:id/install-command', requireRole('admin'), (req: AuthRequest, res:
   const agent = db.prepare('SELECT id, name, token, deploy_config FROM agents WHERE id = ?').get(req.params.id) as any;
   if (!agent) { res.status(404).json({ error: 'Agente não encontrado' }); return; }
 
-  const cfg = parseJSON(agent.deploy_config || '{}');
+  const cfg = parseJSON<Record<string, any>>(agent.deploy_config || '{}', {});
   const backendUrl = cfg.backend_url || `http://localhost:4000`;
   const dockerBackendUrl = backendUrl.replace('localhost', 'host.docker.internal').replace('127.0.0.1', 'host.docker.internal');
   const image = cfg.docker_image || 'node:20-slim';
@@ -182,7 +184,6 @@ router.post('/:id/check-status', requireRole('admin'), (req: AuthRequest, res: R
       db.prepare('UPDATE agents SET status = ? WHERE id = ?').run('offline', agent.id);
       db.prepare("UPDATE executions SET status = 'error' WHERE agent_id = ? AND status IN ('running','queued')").run(agent.id);
       try {
-        const { getIo } = require('../../realtime/gateway');
         getIo().emit('agent:offline', { agentId: agent.id, agentName: agent.name });
       } catch { /* socket may not be ready */ }
       res.json({ status: 'offline', changed: true, message: `Agente marcado offline (sem heartbeat há ${Math.round(diffSeconds)}s)` });
@@ -204,8 +205,5 @@ router.delete('/:id', requireRole('admin'), (req: AuthRequest, res: Response) =>
   res.json({ message: 'Agente removido com sucesso' });
 });
 
-function parseJSON(v: string) {
-  try { return JSON.parse(v); } catch { return {}; }
-}
 
 export default router;

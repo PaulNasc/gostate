@@ -27,59 +27,6 @@ export default function DashboardPage() {
   });
   const liveExecs: any[] = liveData?.data?.executions || [];
 
-  const { data: flakyData } = useQuery({
-    queryKey: ['executions-flaky'],
-    queryFn: () => executionsApi.list({ limit: 200 }),
-    refetchInterval: 60000,
-  });
-  const flakyExecs: any[] = flakyData?.data?.executions || [];
-
-  // Avg duration per project over last 7 days
-  const avgByProject = (() => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 7);
-    const byProject: Record<string, { name: string; durations: number[] }> = {};
-    flakyExecs.forEach(e => {
-      if (!e.project_id || !e.project_name || !e.duration_ms || e.duration_ms <= 0) return;
-      if (!['passed', 'failed', 'error'].includes(e.status)) return;
-      const d = new Date(e.created_at?.includes('T') ? e.created_at : e.created_at?.replace(' ', 'T') + 'Z');
-      if (isNaN(d.getTime()) || d < cutoff) return;
-      if (!byProject[e.project_id]) byProject[e.project_id] = { name: e.project_name, durations: [] };
-      byProject[e.project_id].durations.push(e.duration_ms);
-    });
-    return Object.entries(byProject)
-      .map(([id, { name, durations }]) => ({
-        id,
-        name,
-        avg: Math.round(durations.reduce((a, b) => a + b, 0) / durations.length),
-        count: durations.length,
-      }))
-      .filter(p => p.count >= 2)
-      .sort((a, b) => b.avg - a.avg)
-      .slice(0, 5);
-  })();
-
-  const flakyTcs = (() => {
-    const byTc: Record<string, { title: string; statuses: string[] }> = {};
-    flakyExecs.forEach(e => {
-      if (!e.test_case_id || !e.tc_title) return;
-      if (!byTc[e.test_case_id]) byTc[e.test_case_id] = { title: e.tc_title, statuses: [] };
-      byTc[e.test_case_id].statuses.push(e.status);
-    });
-    return Object.entries(byTc)
-      .filter(([, { statuses }]) => statuses.length >= 4)
-      .map(([id, { title, statuses }]) => {
-        const finals = statuses.map(s => s === 'passed' ? 1 : s === 'failed' || s === 'error' ? 0 : -1).filter(s => s !== -1);
-        let switches = 0;
-        for (let i = 1; i < finals.length; i++) if (finals[i] !== finals[i - 1]) switches++;
-        const score = finals.length > 1 ? switches / (finals.length - 1) : 0;
-        return { id, title, score, total: finals.length };
-      })
-      .filter(t => t.score > 0.2)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 5);
-  })();
-
   useEffect(() => {
     const token = localStorage.getItem('gostate:token');
     if (!token) return;
@@ -95,6 +42,8 @@ export default function DashboardPage() {
   }, [qc]);
 
   const s = data?.data;
+  const flakyTcs: any[] = s?.flaky_tcs ?? [];
+  const avgByProject: any[] = s?.avg_by_project ?? [];
 
   const passRate = s?.executions?.pass_rate ?? 0;
   const chartData = (s?.last7days ?? []).map((d: any) => ({

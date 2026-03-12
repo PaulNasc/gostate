@@ -49,6 +49,13 @@ export const healthApi = {
   get: () => api.get('/api/health'),
 };
 
+export const apiTokensApi = {
+  listForUser: (userId: string) => api.get(`/api/me/tokens`, { headers: { 'X-Admin-User-Id': userId } }),
+  listMine: () => api.get('/api/me/tokens'),
+  create: (data: { name: string; expires_at?: string }) => api.post('/api/me/tokens', data),
+  remove: (id: string) => api.delete(`/api/me/tokens/${id}`),
+};
+
 export const auditApi = {
   list: (params?: { entity?: string; action?: string; user_id?: string; limit?: number; offset?: number }) =>
     api.get('/api/audit', { params }),

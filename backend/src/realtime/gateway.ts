@@ -4,12 +4,14 @@ import jwt from 'jsonwebtoken';
 import { JWT_SECRET } from '../shared/middleware/auth';
 import { getDb } from '../db/schema';
 import { fireWebhooksFromGateway } from '../modules/executions/executions.routes';
+import { parseJSON } from '../shared/utils';
 
 let io: SocketServer;
 
 export function initSocket(server: HttpServer): SocketServer {
+  const socketCorsOrigin = process.env.CORS_ORIGIN || '*';
   io = new SocketServer(server, {
-    cors: { origin: '*', methods: ['GET', 'POST'] },
+    cors: { origin: socketCorsOrigin, methods: ['GET', 'POST'] },
     transports: ['polling', 'websocket'],
   });
 
@@ -37,21 +39,6 @@ export function initSocket(server: HttpServer): SocketServer {
       next(new Error('Token inválido'));
     }
   });
-
-  // Periodic sweep: every 60s reset agents without heartbeat and their stuck executions
-  setInterval(() => {
-    const db = getDb();
-    const stale = db.prepare(
-      "SELECT id, name FROM agents WHERE status != 'offline' AND last_heartbeat IS NOT NULL AND (strftime('%s','now') - strftime('%s', last_heartbeat)) > 60"
-    ).all() as any[];
-    for (const agent of stale) {
-      console.log(`[Socket][Sweep] Agente ${agent.name} sem heartbeat — forçando offline`);
-      db.prepare('UPDATE agents SET status = ? WHERE id = ?').run('offline', agent.id);
-      db.prepare("UPDATE executions SET status = 'error', logs = COALESCE(logs,'') || '\n[AGENTE TIMEOUT — SWEEP]' WHERE agent_id = ? AND status IN ('running','queued')").run(agent.id);
-      io.emit('agent:offline', { agentId: agent.id, agentName: agent.name });
-      io.emit('exec:update', { agentId: agent.id });
-    }
-  }, 60000);
 
   io.on('connection', (socket: Socket) => {
     const isAgent = (socket as any).isAgent;
@@ -95,9 +82,9 @@ export function initSocket(server: HttpServer): SocketServer {
           }
           if (exec.test_case_id) {
             const tc = db.prepare('SELECT steps FROM test_cases WHERE id = ?').get(exec.test_case_id) as any;
-            if (tc) { try { tcSteps = JSON.parse(tc.steps || '[]'); } catch {} }
+            if (tc) tcSteps = parseJSON<any[]>(tc.steps, []);
           }
-          const browsers = (() => { try { return JSON.parse(exec.browsers || '["chromium"]'); } catch { return ['chromium']; } })();
+          const browsers = parseJSON<string[]>(exec.browsers, ['chromium']);
           socket.emit('exec:dispatch', {
             execId: exec.id,
             test_case_id: exec.test_case_id || null,

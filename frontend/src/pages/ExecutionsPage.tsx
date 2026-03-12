@@ -6,7 +6,7 @@ import { formatDate, formatDuration, statusBadgeClass, statusLabel } from '../li
 import {
   PlayCircle, RefreshCw, X, Loader2, ExternalLink,
   CheckCircle2, XCircle, Clock, AlertCircle, ChevronsLeft, ChevronLeft, ChevronRight,
-  RotateCcw, Columns2, Download, CalendarDays,
+  RotateCcw, Columns2, Download, CalendarDays, Filter,
 } from 'lucide-react';
 import { io as socketIo } from 'socket.io-client';
 import { useToast } from '../components/Toast';
@@ -56,44 +56,45 @@ export default function ExecutionsPage() {
     });
   };
 
-  // Fetch a large batch — enough to support all pagination client-side
+  const queryParams = {
+    limit: pageSize,
+    offset: (page - 1) * pageSize,
+    ...(filterStatus !== 'all' && { status: filterStatus }),
+    ...(filterProject && { project_id: filterProject }),
+    ...(dateFrom && { date_from: dateFrom }),
+    ...(dateTo && { date_to: dateTo }),
+  };
+
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['executions', 500],
-    queryFn: () => executionsApi.list({ limit: 500 }),
+    queryKey: ['executions', queryParams],
+    queryFn: () => executionsApi.list(queryParams),
     refetchInterval: 5000,
   });
   const { data: projectsData } = useQuery({ queryKey: ['projects'], queryFn: () => projectsApi.list() });
   const projects: any[] = projectsData?.data?.projects || [];
-  const allExecutions: any[] = data?.data?.executions || [];
-
-  // Backend already returns: running/queued first, then created_at DESC — preserve that order
-  const sorted = allExecutions;
-
-  // Apply filters
-  const filtered = sorted
-    .filter(e => filterStatus === 'all' || e.status === filterStatus)
-    .filter(e => !filterProject || e.project_id === filterProject)
-    .filter(e => {
-      if (!dateFrom && !dateTo) return true;
-      const d = new Date(e.created_at?.includes('T') ? e.created_at : e.created_at?.replace(' ', 'T') + 'Z');
-      if (isNaN(d.getTime())) return true;
-      if (dateFrom && d < new Date(dateFrom)) return false;
-      if (dateTo) {
-        const end = new Date(dateTo);
-        end.setHours(23, 59, 59, 999);
-        if (d > end) return false;
-      }
-      return true;
-    });
-
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const pageExecutions: any[] = data?.data?.executions || [];
+  const total: number = data?.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   // Reset to page 1 when filters or pageSize change
   useEffect(() => { setPage(1); }, [filterStatus, filterProject, pageSize, dateFrom, dateTo]);
   // Clamp page if total pages shrinks
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [totalPages, page]);
 
-  const pageExecutions = filtered.slice((page - 1) * pageSize, page * pageSize);
+  // For summary cards: fetch counts without pagination (just status breakdown)
+  const { data: statsData } = useQuery({
+    queryKey: ['executions-stats', filterProject, dateFrom, dateTo],
+    queryFn: () => executionsApi.list({
+      limit: 1,
+      offset: 0,
+      ...(filterProject && { project_id: filterProject }),
+      ...(dateFrom && { date_from: dateFrom }),
+      ...(dateTo && { date_to: dateTo }),
+    }),
+    refetchInterval: 5000,
+  });
+
+  const filtered = pageExecutions;
 
   // Pagination window: always show VISIBLE_PAGES buttons, sliding with current page
   const getPageNumbers = () => {
@@ -134,11 +135,11 @@ export default function ExecutionsPage() {
     onError: (e: any) => toast.error(e?.message || 'Erro ao re-executar'),
   });
 
-  const failedCount = filtered.filter(e => e.status === 'failed' || e.status === 'error').length;
+  const failedCount = pageExecutions.filter(e => e.status === 'failed' || e.status === 'error').length;
 
   const exportCSV = () => {
     const headers = ['ID', 'Status', 'Caso / Script', 'Projeto', 'Browser', 'Agente', 'Duração (ms)', 'Iniciado'];
-    const rows = filtered.map(e => [
+    const rows = pageExecutions.map(e => [
       e.id,
       e.status,
       e.tc_title || e.script_filename || '',
@@ -162,18 +163,17 @@ export default function ExecutionsPage() {
     const token = localStorage.getItem('gostate:token');
     if (!token) return;
     const socket = socketIo(API_BASE, { auth: { token } });
-    socket.on('exec:started', () => qc.invalidateQueries({ queryKey: ['executions'] }));
-    socket.on('exec:finished', () => qc.invalidateQueries({ queryKey: ['executions'] }));
-    socket.on('exec:update', () => qc.invalidateQueries({ queryKey: ['executions'] }));
-    socket.on('exec:cancelled', () => qc.invalidateQueries({ queryKey: ['executions'] }));
+    const invalidate = () => {
+      qc.invalidateQueries({ queryKey: ['executions'] });
+      qc.invalidateQueries({ queryKey: ['executions-stats'] });
+    };
+    socket.on('exec:started', invalidate);
+    socket.on('exec:finished', invalidate);
+    socket.on('exec:update', invalidate);
+    socket.on('exec:cancelled', invalidate);
     return () => { socket.disconnect(); };
   }, [qc]);
 
-  const running = allExecutions.filter(e => e.status === 'running' || e.status === 'queued').length;
-  const passed = allExecutions.filter(e => e.status === 'passed').length;
-  const failed = allExecutions.filter(e => e.status === 'failed').length;
-  const total = allExecutions.length;
-  const passRate = total > 0 ? Math.round((passed / total) * 100) : 0;
   const pageNums = getPageNumbers();
 
   return (
@@ -183,7 +183,7 @@ export default function ExecutionsPage() {
         <div>
           <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>Execuções</h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-            {filtered.length} {filtered.length === 1 ? 'execução' : 'execuções'}{filtered.length !== total ? ` de ${total}` : ' no total'}
+            {total} {total === 1 ? 'execução' : 'execuções'}{filterStatus !== 'all' || filterProject || dateFrom || dateTo ? ' (filtrado)' : ' no total'}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -233,32 +233,39 @@ export default function ExecutionsPage() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      {total > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-shrink-0">
-          <div className="card px-4 py-3">
-            <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Pass Rate</p>
-            <div className="flex items-center gap-2">
-              <span className={`text-lg font-bold ${passRate >= 80 ? 'text-green-400' : passRate >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>{passRate}%</span>
-              <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
-                <div className={`h-full rounded-full ${passRate >= 80 ? 'bg-green-500' : passRate >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${passRate}%` }} />
+      {/* Summary cards — use the stats query (limit=1) which returns total without status filter */}
+      {(statsData?.data?.total ?? total) > 0 && (() => {
+        const allTotal: number = statsData?.data?.total ?? total;
+        const runningCount = pageExecutions.filter(e => e.status === 'running' || e.status === 'queued').length;
+        const passedCount = pageExecutions.filter(e => e.status === 'passed').length;
+        const failedCount2 = pageExecutions.filter(e => e.status === 'failed').length;
+        const pr = pageExecutions.length > 0 ? Math.round((passedCount / pageExecutions.length) * 100) : 0;
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 flex-shrink-0">
+            <div className="card px-4 py-3">
+              <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Pass Rate</p>
+              <div className="flex items-center gap-2">
+                <span className={`text-lg font-bold ${pr >= 80 ? 'text-green-400' : pr >= 50 ? 'text-yellow-400' : 'text-red-400'}`}>{pr}%</span>
+                <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
+                  <div className={`h-full rounded-full ${pr >= 80 ? 'bg-green-500' : pr >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} style={{ width: `${pr}%` }} />
+                </div>
               </div>
             </div>
+            <div className="card px-4 py-3">
+              <p className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Passaram</p>
+              <p className="text-lg font-bold text-green-400">{passedCount}</p>
+            </div>
+            <div className="card px-4 py-3">
+              <p className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Falharam</p>
+              <p className="text-lg font-bold text-red-400">{failedCount2}</p>
+            </div>
+            <div className="card px-4 py-3">
+              <p className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Total filtrado</p>
+              <p className={`text-lg font-bold ${runningCount > 0 ? 'text-blue-400' : 'text-slate-400'}`}>{allTotal}</p>
+            </div>
           </div>
-          <div className="card px-4 py-3">
-            <p className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Passaram</p>
-            <p className="text-lg font-bold text-green-400">{passed}</p>
-          </div>
-          <div className="card px-4 py-3">
-            <p className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Falharam</p>
-            <p className="text-lg font-bold text-red-400">{failed}</p>
-          </div>
-          <div className="card px-4 py-3">
-            <p className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>Em andamento</p>
-            <p className={`text-lg font-bold ${running > 0 ? 'text-blue-400' : 'text-slate-500'}`}>{running}</p>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Filters row: project + date range */}
       <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
@@ -304,9 +311,7 @@ export default function ExecutionsPage() {
       {/* Filter tabs */}
       <div className="flex gap-1 border-b flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
         {STATUS_FILTERS.map(f => {
-          const count = f.key === 'all'
-            ? sorted.filter(e => !filterProject || e.project_id === filterProject).length
-            : sorted.filter(e => e.status === f.key && (!filterProject || e.project_id === filterProject)).length;
+          const count = f.key === 'all' ? total : (f.key === filterStatus ? total : 0);
           return (
             <button
               key={f.key}
@@ -335,13 +340,31 @@ export default function ExecutionsPage() {
         <div className="flex justify-center py-12 flex-shrink-0"><Loader2 className="w-6 h-6 animate-spin text-slate-500" /></div>
       ) : filtered.length === 0 ? (
         <div className="card p-12 text-center flex-shrink-0">
-          <PlayCircle className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400 font-medium">
-            {filterStatus === 'all' ? 'Nenhuma execução ainda' : `Nenhuma execução com status "${statusLabel(filterStatus)}"`}
-          </p>
-          <p className="text-sm text-slate-600 mt-1">
-            {filterStatus === 'all' ? 'Execute um caso de teste para ver os resultados aqui' : 'Tente outro filtro'}
-          </p>
+          {filterStatus === 'all' && !filterProject && !dateFrom && !dateTo ? (
+            <>
+              <PlayCircle className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--text-muted)' }} />
+              <p className="font-medium" style={{ color: 'var(--text)' }}>Nenhuma execução ainda</p>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Execute um caso de teste em qualquer projeto para ver os resultados aqui</p>
+              <button
+                className="btn-primary mt-4 text-sm flex items-center gap-2 mx-auto"
+                onClick={() => navigate('/projects')}
+              >
+                <PlayCircle className="w-4 h-4" /> Ir para projetos
+              </button>
+            </>
+          ) : (
+            <>
+              <Filter className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--text-muted)' }} />
+              <p className="font-medium" style={{ color: 'var(--text)' }}>Nenhuma execução encontrada</p>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Tente ajustar os filtros aplicados</p>
+              <button
+                className="btn-ghost mt-4 text-sm flex items-center gap-2 mx-auto"
+                onClick={() => { setFilterStatus('all'); setFilterProject(''); setDateFrom(''); setDateTo(''); }}
+              >
+                <X className="w-4 h-4" /> Limpar filtros
+              </button>
+            </>
+          )}
         </div>
       ) : (
         <div className="card overflow-hidden flex-shrink-0">
@@ -426,7 +449,7 @@ export default function ExecutionsPage() {
             {/* Left: info + page size selector */}
             <div className="flex items-center gap-3">
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {filtered.length === 0 ? '0' : `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filtered.length)}`} de {filtered.length}
+                {total === 0 ? '0' : `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)}`} de {total}
               </span>
               <select
                 className="text-xs rounded-md px-2 py-1 border outline-none"
@@ -519,7 +542,7 @@ export default function ExecutionsPage() {
       {showCompare && compareSet.size === 2 && (
         <CompareModal
           ids={Array.from(compareSet)}
-          allExecs={allExecutions}
+          allExecs={pageExecutions}
           onClose={() => setShowCompare(false)}
         />
       )}

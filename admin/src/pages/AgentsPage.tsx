@@ -47,9 +47,134 @@ const ENV_OPTIONS: { id: EnvType; icon: React.ReactNode; title: string; subtitle
   { id: 'npm-windows',    icon: <Terminal className="w-5 h-5" />, title: 'NPM direto — Windows',          subtitle: 'Node.js já instalado, PowerShell',               cmd: 'npm_powershell' },
 ];
 
+type DeployTarget = 'local' | 'aws-ec2' | 'vps' | 'docker-remote' | 'cloud-paas';
+
+const DEPLOY_TARGETS: { id: DeployTarget; icon: React.ReactNode; title: string; subtitle: string }[] = [
+  { id: 'local',         icon: <Monitor className="w-5 h-5" />,  title: 'Local / mesma máquina',      subtitle: 'Docker Desktop ou Node.js na própria máquina do backend' },
+  { id: 'vps',           icon: <Server  className="w-5 h-5" />,  title: 'VPS / Servidor Dedicado',     subtitle: 'DigitalOcean, Hetzner, Linode, servidor próprio com SSH' },
+  { id: 'aws-ec2',       icon: <Cloud   className="w-5 h-5" />,  title: 'AWS EC2 / GCP VM / Azure VM', subtitle: 'Instância de VM na nuvem com acesso SSH' },
+  { id: 'docker-remote', icon: <Package className="w-5 h-5" />,  title: 'Docker remoto (outra máquina)', subtitle: 'Docker Engine acessível via SSH ou Docker Context' },
+  { id: 'cloud-paas',    icon: <Rocket  className="w-5 h-5" />,  title: 'PaaS / Container-as-a-Service', subtitle: 'Railway, Render, Fly.io, Google Cloud Run' },
+];
+
+const SETUP_GUIDES: Record<DeployTarget, React.ReactNode> = {
+  local: (
+    <div className="space-y-2 text-xs">
+      <p className="text-slate-300 font-semibold">Pré-requisitos</p>
+      <ul className="space-y-1 text-slate-400 list-disc list-inside">
+        <li>Docker Desktop instalado <span className="text-slate-600">(ou Node.js 18+)</span></li>
+        <li>Repositório goState clonado na máquina</li>
+      </ul>
+      <p className="text-slate-300 font-semibold mt-3">Conectividade</p>
+      <p className="text-slate-400">Use <code className="text-violet-300">http://host.docker.internal:4000</code> como BACKEND_URL — o Docker resolve automaticamente para o host.</p>
+    </div>
+  ),
+  vps: (
+    <div className="space-y-2 text-xs">
+      <p className="text-slate-300 font-semibold">Pré-requisitos no servidor</p>
+      <div className="rounded-lg p-3 font-mono space-y-1" style={{ background: '#020409', border: '1px solid #2a3352' }}>
+        <p className="text-green-400"># Instalar Docker (Ubuntu/Debian)</p>
+        <p className="text-slate-300">curl -fsSL https://get.docker.com | sh</p>
+        <p className="text-slate-300">sudo usermod -aG docker $USER</p>
+        <p className="text-green-400 mt-2"># Clonar o projeto</p>
+        <p className="text-slate-300">git clone https://github.com/seu-org/gostate.git</p>
+        <p className="text-slate-300">cd gostate/agent</p>
+      </div>
+      <p className="text-slate-300 font-semibold mt-3">Conectividade</p>
+      <p className="text-slate-400">Configure <code className="text-violet-300">BACKEND_URL</code> com o IP público ou domínio do seu backend: <code className="text-violet-300">http://SEU_IP:4000</code></p>
+      <div className="flex items-start gap-2 rounded-lg px-3 py-2 mt-2" style={{ background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.15)' }}>
+        <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0 mt-0.5" />
+        <p className="text-yellow-200/70">Certifique-se que a porta 4000 está aberta no firewall do servidor do backend (<code>ufw allow 4000</code>).</p>
+      </div>
+    </div>
+  ),
+  'aws-ec2': (
+    <div className="space-y-2 text-xs">
+      <p className="text-slate-300 font-semibold">1. Criar instância EC2</p>
+      <ul className="space-y-1 text-slate-400 list-disc list-inside">
+        <li>AMI recomendada: <span className="text-violet-300">Ubuntu Server 22.04 LTS</span></li>
+        <li>Tipo mínimo: <span className="text-violet-300">t3.medium</span> (2 vCPU, 4 GB RAM)</li>
+        <li>Para 3+ browsers paralelos: <span className="text-violet-300">t3.large ou superior</span></li>
+        <li>Security Group: sem inbound necessário (agente apenas faz outbound)</li>
+      </ul>
+      <p className="text-slate-300 font-semibold mt-3">2. Instalar dependências via SSH</p>
+      <div className="rounded-lg p-3 font-mono space-y-1" style={{ background: '#020409', border: '1px solid #2a3352' }}>
+        <p className="text-green-400"># Conectar à instância</p>
+        <p className="text-slate-300">ssh -i sua-chave.pem ubuntu@SEU_IP_EC2</p>
+        <p className="text-green-400 mt-2"># Instalar Docker</p>
+        <p className="text-slate-300">curl -fsSL https://get.docker.com | sh</p>
+        <p className="text-slate-300">sudo usermod -aG docker ubuntu && newgrp docker</p>
+        <p className="text-green-400 mt-2"># Clonar e rodar o agente</p>
+        <p className="text-slate-300">git clone https://github.com/seu-org/gostate.git</p>
+        <p className="text-slate-300">cd gostate/agent</p>
+      </div>
+      <p className="text-slate-300 font-semibold mt-3">3. Conectividade</p>
+      <p className="text-slate-400">Use o IP/DNS público do backend no <code className="text-violet-300">BACKEND_URL</code>. Se o backend também está na AWS, use o IP privado para evitar custos de tráfego.</p>
+      <div className="flex items-start gap-2 rounded-lg px-3 py-2 mt-2" style={{ background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)' }}>
+        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0 mt-0.5" />
+        <p className="text-emerald-300/70">Dica: use um Security Group de saída irrestrito. O agente só precisa de acesso de saída para o backend e para baixar browsers do Playwright.</p>
+      </div>
+    </div>
+  ),
+  'docker-remote': (
+    <div className="space-y-2 text-xs">
+      <p className="text-slate-300 font-semibold">Opção A — SSH direto para o host remoto</p>
+      <div className="rounded-lg p-3 font-mono space-y-1" style={{ background: '#020409', border: '1px solid #2a3352' }}>
+        <p className="text-green-400"># Copiar a pasta agent/ para o servidor remoto</p>
+        <p className="text-slate-300">scp -r ./agent user@SERVIDOR_IP:~/gostate-agent</p>
+        <p className="text-green-400 mt-2"># Conectar e subir o container</p>
+        <p className="text-slate-300">ssh user@SERVIDOR_IP</p>
+        <p className="text-slate-300">cd ~/gostate-agent</p>
+        <p className="text-slate-300">docker compose up -d   # usa o docker-compose.yml gerado</p>
+      </div>
+      <p className="text-slate-300 font-semibold mt-3">Opção B — Docker Context (sem SSH manual)</p>
+      <div className="rounded-lg p-3 font-mono space-y-1" style={{ background: '#020409', border: '1px solid #2a3352' }}>
+        <p className="text-green-400"># Criar context apontando para o host remoto</p>
+        <p className="text-slate-300">docker context create remoto --docker "host=ssh://user@SERVIDOR_IP"</p>
+        <p className="text-slate-300">docker context use remoto</p>
+        <p className="text-green-400 mt-2"># Subir a partir da máquina local</p>
+        <p className="text-slate-300">cd agent && docker compose up -d</p>
+        <p className="text-slate-300">docker context use default  # voltar ao contexto local</p>
+      </div>
+    </div>
+  ),
+  'cloud-paas': (
+    <div className="space-y-2 text-xs">
+      <p className="text-slate-300 font-semibold">Railway / Render / Fly.io</p>
+      <ul className="space-y-1 text-slate-400 list-disc list-inside">
+        <li>Aponte o serviço para a pasta <code className="text-violet-300">agent/</code> do repositório</li>
+        <li>O Dockerfile já está configurado — sem configuração extra</li>
+        <li>Defina as variáveis de ambiente no painel do serviço:</li>
+      </ul>
+      <div className="rounded-lg p-3 font-mono space-y-1 mt-1" style={{ background: '#020409', border: '1px solid #2a3352' }}>
+        <p className="text-slate-300">AGENT_TOKEN=<span className="text-violet-300">[token gerado]</span></p>
+        <p className="text-slate-300">BACKEND_URL=<span className="text-violet-300">https://seu-backend.railway.app</span></p>
+        <p className="text-slate-300">NODE_ENV=production</p>
+        <p className="text-slate-300">AGENT_MAX_CONCURRENT=2</p>
+      </div>
+      <div className="flex items-start gap-2 rounded-lg px-3 py-2 mt-2" style={{ background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.15)' }}>
+        <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0 mt-0.5" />
+        <p className="text-yellow-200/70"><strong>Atenção:</strong> PaaS gratuitos podem ter cold starts ou limites de RAM. Playwright com Chromium precisa de <strong>mínimo 1 GB RAM</strong>. Planos free podem não ser suficientes.</p>
+      </div>
+      <p className="text-slate-300 font-semibold mt-3">Google Cloud Run</p>
+      <div className="rounded-lg p-3 font-mono space-y-1" style={{ background: '#020409', border: '1px solid #2a3352' }}>
+        <p className="text-green-400"># Build e push da imagem</p>
+        <p className="text-slate-300">cd agent</p>
+        <p className="text-slate-300">gcloud builds submit --tag gcr.io/SEU_PROJETO/gostate-agent</p>
+        <p className="text-green-400 mt-2"># Deploy com variáveis de ambiente</p>
+        <p className="text-slate-300">gcloud run deploy gostate-agent \</p>
+        <p className="text-slate-300">  --image gcr.io/SEU_PROJETO/gostate-agent \</p>
+        <p className="text-slate-300">  --set-env-vars AGENT_TOKEN=TOKEN,BACKEND_URL=URL \</p>
+        <p className="text-slate-300">  --memory 2Gi --no-allow-unauthenticated</p>
+      </div>
+    </div>
+  ),
+};
+
 function DeployWizard({ agent, token, onClose }: { agent: any; token: string; onClose: () => void }) {
   const qc = useQueryClient();
-  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [target, setTarget] = useState<DeployTarget | null>(null);
   const [env, setEnv] = useState<EnvType | null>(null);
   const [backendUrl, setBackendUrl] = useState('http://host.docker.internal:4000');
   const [commands, setCommands] = useState<InstallCommands | null>(null);
@@ -65,22 +190,32 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
     if (!env) return;
     setLoading(true);
     try {
-      await agentsApi.saveDeployConfig(agent.id, { backend_url: backendUrl, docker_image: 'node:20-slim', node_env: 'production', extra_env: '', notes: '' });
+      await agentsApi.saveDeployConfig(agent.id, { backend_url: backendUrl, docker_image: 'node:20-slim', node_env: 'production', extra_env: '', notes: target || '' });
       const res = await agentsApi.getInstallCommand(agent.id);
       setCommands(res.data.commands);
       qc.invalidateQueries({ queryKey: ['admin-agents'] });
-      setStep(3);
+      setStep(4);
     } catch { /* ignore */ }
     finally { setLoading(false); }
+  };
+
+  // Auto-suggest backend URL based on target
+  const handleTargetSelect = (t: DeployTarget) => {
+    setTarget(t);
+    if (t === 'local') setBackendUrl('http://host.docker.internal:4000');
+    else setBackendUrl('http://SEU_IP_OU_DOMINIO:4000');
   };
 
   const selectedEnv = ENV_OPTIONS.find(e => e.id === env);
   const currentCmd = commands && selectedEnv ? commands[selectedEnv.cmd] : '';
   const isCompose = env === 'compose';
+  const TOTAL_STEPS = 4;
+
+  const STEP_LABELS = ['Token', 'Onde rodar', 'Comando', 'Verificar'];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0d1117', border: '1px solid #2a3352', maxHeight: '90vh' }} onClick={e => e.stopPropagation()}>
+      <div className="w-full max-w-2xl rounded-2xl overflow-hidden flex flex-col" style={{ background: '#0d1117', border: '1px solid #2a3352', maxHeight: '92vh' }} onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b" style={{ borderColor: '#1e2a3a' }}>
@@ -90,15 +225,30 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
             </div>
             <div>
               <p className="text-sm font-semibold text-white">Conectar Agente: <span className="text-violet-300">{agent.name}</span></p>
-              <p className="text-xs text-slate-500">Passo {step} de 3</p>
+              <p className="text-xs text-slate-500">{STEP_LABELS[step - 1]} · Passo {step} de {TOTAL_STEPS}</p>
             </div>
           </div>
           <button className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-slate-400" onClick={onClose}><X className="w-4 h-4" /></button>
         </div>
 
-        {/* Progress bar */}
-        <div className="h-0.5" style={{ background: '#1e2a3a' }}>
-          <div className="h-full bg-violet-500 transition-all duration-300" style={{ width: `${(step / 3) * 100}%` }} />
+        {/* Step indicator */}
+        <div className="flex items-center px-6 py-3 gap-1 border-b" style={{ borderColor: '#1e2a3a' }}>
+          {STEP_LABELS.map((label, i) => {
+            const s = i + 1;
+            const active = step === s;
+            const done = step > s;
+            return (
+              <div key={s} className="flex items-center gap-1 flex-1">
+                <div className={`flex items-center gap-1.5 text-xs font-medium ${active ? 'text-violet-300' : done ? 'text-green-400' : 'text-slate-600'}`}>
+                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs ${active ? 'bg-violet-500/30 text-violet-300' : done ? 'bg-green-500/20 text-green-400' : 'bg-slate-800 text-slate-600'}`}>
+                    {done ? '✓' : s}
+                  </span>
+                  <span className="hidden sm:inline">{label}</span>
+                </div>
+                {i < STEP_LABELS.length - 1 && <div className="flex-1 h-px mx-1" style={{ background: done ? '#22c55e40' : '#1e2a3a' }} />}
+              </div>
+            );
+          })}
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
@@ -107,8 +257,8 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
           {step === 1 && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-base font-semibold text-white mb-1">1. Token do agente</h2>
-                <p className="text-xs text-slate-400">Guarde este token — ele autentica o agente com o backend. Não será exibido novamente.</p>
+                <h2 className="text-base font-semibold text-white mb-1">Token do agente</h2>
+                <p className="text-xs text-slate-400">Guarde este token — ele autentica o agente com o backend. Não será exibido novamente após fechar.</p>
               </div>
               <div className="flex items-center gap-2 rounded-xl px-4 py-3 font-mono text-xs" style={{ background: '#0a0d14', border: '1px solid #2a3352' }}>
                 <span className="flex-1 text-violet-300 break-all select-all">{token}</span>
@@ -118,17 +268,55 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
               </div>
               <div className="flex items-start gap-2 rounded-lg px-3 py-2.5 text-xs" style={{ background: 'rgba(234,179,8,0.07)', border: '1px solid rgba(234,179,8,0.2)' }}>
                 <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0 mt-0.5" />
-                <span className="text-yellow-200/70">Copie o token agora. Após fechar este wizard, você não poderá vê-lo novamente.</span>
+                <span className="text-yellow-200/70">Copie o token agora e guarde em local seguro (ex: secrets do seu CI/CD ou .env do servidor).</span>
+              </div>
+              <div className="rounded-xl p-4 space-y-2 text-xs" style={{ background: '#0a0f1a', border: '1px solid #1e2a3a' }}>
+                <p className="text-slate-300 font-semibold">Como este token é usado</p>
+                <p className="text-slate-500">O agente usa o valor de <code className="text-violet-300">AGENT_TOKEN</code> para autenticar via WebSocket no backend. Sem esse token, o agente não consegue receber execuções.</p>
               </div>
             </div>
           )}
 
-          {/* Step 2: Environment + backend URL */}
+          {/* Step 2: Target + setup guide + backend URL */}
           {step === 2 && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-base font-semibold text-white mb-1">2. Onde vai rodar o agente?</h2>
-                <p className="text-xs text-slate-400">Escolha o ambiente de execução. O comando de instalação será gerado automaticamente.</p>
+                <h2 className="text-base font-semibold text-white mb-1">Onde vai rodar o agente?</h2>
+                <p className="text-xs text-slate-400">Selecione o ambiente para ver o guia de configuração específico.</p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2">
+                {DEPLOY_TARGETS.map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => handleTargetSelect(opt.id)}
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all"
+                    style={{ border: `1px solid ${target === opt.id ? 'rgba(124,58,237,0.6)' : '#2a3352'}`, background: target === opt.id ? 'rgba(124,58,237,0.08)' : 'transparent' }}
+                  >
+                    <span className={target === opt.id ? 'text-violet-400' : 'text-slate-500'}>{opt.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${target === opt.id ? 'text-white' : 'text-slate-300'}`}>{opt.title}</p>
+                      <p className="text-xs text-slate-500 mt-0.5">{opt.subtitle}</p>
+                    </div>
+                    {target === opt.id && <CheckCircle2 className="w-4 h-4 text-violet-400 flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+
+              {target && (
+                <div className="rounded-xl p-4" style={{ background: '#0a0f1a', border: '1px solid #1e2a3a' }}>
+                  {SETUP_GUIDES[target]}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Step 3: Command type + backend URL */}
+          {step === 3 && (
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-base font-semibold text-white mb-1">Método de execução</h2>
+                <p className="text-xs text-slate-400">Escolha como o agente será executado no servidor.</p>
               </div>
 
               <div className="grid grid-cols-1 gap-2">
@@ -136,12 +324,8 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
                   <button
                     key={opt.id}
                     onClick={() => setEnv(opt.id)}
-                    className={`flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all ${
-                      env === opt.id
-                        ? 'border-violet-500/60 bg-violet-500/10'
-                        : 'border-slate-700/60 hover:border-slate-600'
-                    }`}
-                    style={{ border: '1px solid' }}
+                    className="flex items-center gap-3 px-4 py-3 rounded-xl text-left transition-all"
+                    style={{ border: `1px solid ${env === opt.id ? 'rgba(124,58,237,0.6)' : '#2a3352'}`, background: env === opt.id ? 'rgba(124,58,237,0.08)' : 'transparent' }}
                   >
                     <span className={env === opt.id ? 'text-violet-400' : 'text-slate-500'}>{opt.icon}</span>
                     <div className="flex-1 min-w-0">
@@ -155,7 +339,7 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
 
               <div>
                 <label className="block text-xs font-medium text-slate-400 mb-1.5">
-                  URL do Backend <span className="text-slate-600">(onde o agente vai enviar os resultados)</span>
+                  URL do Backend <span className="text-slate-600">(onde o agente vai conectar)</span>
                 </label>
                 <input
                   className="input w-full"
@@ -163,18 +347,21 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
                   value={backendUrl}
                   onChange={e => setBackendUrl(e.target.value)}
                 />
-                <p className="text-xs text-slate-600 mt-1">Use <code className="text-violet-400">http://host.docker.internal:4000</code> para Docker ou a URL pública do backend para cloud</p>
+                {target === 'local' && <p className="text-xs text-slate-600 mt-1">✓ <code className="text-violet-400">host.docker.internal</code> resolve automaticamente para o host no Docker</p>}
+                {target !== 'local' && <p className="text-xs text-slate-600 mt-1">Use o IP público ou domínio do servidor onde o backend está rodando</p>}
               </div>
             </div>
           )}
 
-          {/* Step 3: Command */}
-          {step === 3 && commands && (
+          {/* Step 4: Command + next steps */}
+          {step === 4 && commands && (
             <div className="space-y-4">
               <div>
-                <h2 className="text-base font-semibold text-white mb-1">3. Execute no servidor</h2>
+                <h2 className="text-base font-semibold text-white mb-1">Execute no servidor</h2>
                 <p className="text-xs text-slate-400">
-                  Copie o comando abaixo e execute {isCompose ? 'salve como <code>docker-compose.yml</code> na pasta <code>agent/</code>' : 'no terminal do servidor'}, dentro da pasta <code className="text-violet-300">agent/</code> do projeto goState.
+                  {isCompose
+                    ? 'Salve como docker-compose.yml na pasta agent/ e execute docker compose up -d'
+                    : 'Copie o comando e execute no terminal do servidor, dentro da pasta agent/'}
                 </p>
               </div>
 
@@ -186,23 +373,30 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
                     {copied ? 'Copiado!' : 'Copiar'}
                   </button>
                 </div>
-                <pre className="p-4 text-xs text-violet-200 font-mono overflow-x-auto whitespace-pre leading-relaxed" style={{ maxHeight: '220px' }}>{currentCmd}</pre>
+                <pre className="p-4 text-xs text-violet-200 font-mono overflow-x-auto whitespace-pre leading-relaxed" style={{ maxHeight: '200px' }}>{currentCmd}</pre>
               </div>
 
-              <div className="space-y-2 text-xs text-slate-400 rounded-xl p-4" style={{ background: '#0a0f1a', border: '1px solid #1e2a3a' }}>
-                <p className="font-semibold text-slate-300">Próximos passos</p>
-                {!isCompose && (
-                  <p>1. Certifique-se que <span className="text-violet-300">{env?.startsWith('docker') ? 'Docker' : 'Node.js 18+'}</span> está instalado no servidor</p>
-                )}
-                {isCompose && <p>1. Salve o conteúdo como <code className="text-violet-300">docker-compose.yml</code> na pasta <code className="text-violet-300">agent/</code></p>}
-                <p>{isCompose ? '2' : '2'}. Execute o comando na pasta <code className="text-violet-300">agent/</code> do projeto</p>
-                <p>{isCompose ? '3' : '3'}. O agente vai aparecer como <span className="text-green-400">Online</span> em alguns segundos</p>
-                <p className="text-slate-600">O token já está incorporado no comando — zero configuração manual.</p>
+              <div className="rounded-xl p-4 space-y-2 text-xs" style={{ background: '#0a0f1a', border: '1px solid #1e2a3a' }}>
+                <p className="text-slate-300 font-semibold">Checklist de verificação</p>
+                <div className="space-y-1.5 text-slate-400">
+                  <p>☐ Execute o comando na pasta <code className="text-violet-300">agent/</code> do projeto</p>
+                  <p>☐ Aguarde o build da imagem Docker (~3–5 min na primeira vez)</p>
+                  <p>☐ Verifique os logs: <code className="text-violet-300">docker logs -f nome-do-container</code></p>
+                  <p>☐ O agente deve aparecer como <span className="text-green-400 font-semibold">Online</span> nesta página em até 30 segundos</p>
+                  {target === 'aws-ec2' && <p>☐ Confirme que o Security Group do backend permite tráfego de entrada na porta 4000</p>}
+                  {target === 'vps' && <p>☐ Verifique se o firewall libera a porta 4000: <code className="text-violet-300">ufw allow 4000</code></p>}
+                  {target === 'cloud-paas' && <p>☐ Confirme que o serviço não tem restrição de saída de rede (outbound)</p>}
+                </div>
               </div>
 
-              <div className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-xs" style={{ background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.2)' }}>
-                <Cloud className="w-3.5 h-3.5 text-emerald-400 flex-shrink-0" />
-                <span className="text-emerald-300/80">Para ambientes cloud (Railway, Render, Fly.io): use a opção Docker Linux e defina a URL do backend como a URL pública do seu backend goState.</span>
+              <div className="rounded-xl p-4 space-y-2 text-xs" style={{ background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.2)' }}>
+                <p className="text-emerald-300 font-semibold">Diagnóstico de problemas</p>
+                <div className="space-y-1.5 text-slate-400">
+                  <p><span className="text-yellow-400">Agente não fica Online:</span> verifique AGENT_TOKEN e BACKEND_URL nos logs</p>
+                  <p><span className="text-yellow-400">Connection refused:</span> confirme que o backend está rodando e acessível na URL configurada</p>
+                  <p><span className="text-yellow-400">Browser não instala:</span> verifique espaço em disco (mínimo 2 GB livres) e acesso à internet do container</p>
+                  <p><span className="text-yellow-400">Out of memory:</span> aumente RAM do servidor ou reduza AGENT_MAX_CONCURRENT</p>
+                </div>
               </div>
             </div>
           )}
@@ -212,17 +406,14 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
         <div className="flex items-center justify-between px-6 py-4 border-t" style={{ borderColor: '#1e2a3a' }}>
           <div>
             {step > 1 && (
-              <button className="btn-ghost flex items-center gap-2 text-sm" onClick={() => setStep(s => (s - 1) as 1 | 2 | 3)}>
+              <button className="btn-ghost flex items-center gap-2 text-sm" onClick={() => setStep(s => (s - 1) as 1 | 2 | 3 | 4)}>
                 <ChevronLeft className="w-4 h-4" /> Voltar
               </button>
             )}
           </div>
           <div className="flex items-center gap-2">
-            {step < 3 && (
-              <button
-                className="btn-ghost text-xs text-slate-500 hover:text-slate-300"
-                onClick={onClose}
-              >Fechar sem configurar</button>
+            {step < 4 && (
+              <button className="btn-ghost text-xs text-slate-500 hover:text-slate-300" onClick={onClose}>Fechar</button>
             )}
             {step === 1 && (
               <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => setStep(2)}>
@@ -230,6 +421,11 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
               </button>
             )}
             {step === 2 && (
+              <button className="btn-primary flex items-center gap-2 text-sm" disabled={!target} onClick={() => setStep(3)}>
+                Próximo <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+            {step === 3 && (
               <button
                 className="btn-primary flex items-center gap-2 text-sm disabled:opacity-50"
                 disabled={!env || loading}
@@ -239,7 +435,7 @@ function DeployWizard({ agent, token, onClose }: { agent: any; token: string; on
                 Gerar Comando
               </button>
             )}
-            {step === 3 && (
+            {step === 4 && (
               <button className="btn-primary flex items-center gap-2 text-sm" onClick={onClose}>
                 <CheckCircle2 className="w-4 h-4" /> Concluir
               </button>

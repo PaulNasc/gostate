@@ -232,8 +232,14 @@ export default function ProjectDetailPage() {
       ) : suites.length === 0 ? (
         <div className="card p-12 text-center">
           <FolderOpen className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--text-muted)' }} />
-          <p className="font-medium" style={{ color: 'var(--text-muted)' }}>Nenhuma suite ainda</p>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Crie uma suite para organizar seus casos de teste</p>
+          <p className="font-medium" style={{ color: 'var(--text)' }}>Nenhuma suite ainda</p>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Suites organizam seus casos de teste em grupos lógicos</p>
+          <button
+            className="btn-primary mt-4 flex items-center gap-2 mx-auto text-sm"
+            onClick={() => setShowSuiteForm(true)}
+          >
+            <Plus className="w-4 h-4" /> Criar primeira suite
+          </button>
         </div>
       ) : (
         <div className="space-y-2">

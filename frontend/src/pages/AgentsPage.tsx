@@ -76,10 +76,31 @@ export default function AgentsPage() {
       {isLoading ? (
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-slate-500" /></div>
       ) : agents.length === 0 ? (
-        <div className="card p-12 text-center">
-          <Server className="w-10 h-10 text-slate-600 mx-auto mb-3" />
-          <p className="text-slate-400 font-medium">Nenhum agente registrado</p>
-          <p className="text-sm text-slate-600 mt-1">Acesse o painel Admin para cadastrar e configurar agentes</p>
+        <div className="card p-10 flex flex-col items-center text-center max-w-lg mx-auto">
+          <div className="w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mb-4">
+            <Server className="w-7 h-7 text-violet-400" />
+          </div>
+          <p className="font-semibold text-base mb-1" style={{ color: 'var(--text)' }}>Nenhum agente registrado</p>
+          <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
+            Agentes são responsáveis por executar os testes. Conecte um agente local ou em servidor para começar a executar casos de teste.
+          </p>
+          <div className="w-full rounded-xl border p-4 text-left mb-4" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
+            <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>Como conectar um agente:</p>
+            <ol className="space-y-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
+              <li className="flex gap-2"><span className="text-violet-400 font-bold shrink-0">1.</span> Acesse o painel Admin e crie um agente</li>
+              <li className="flex gap-2"><span className="text-violet-400 font-bold shrink-0">2.</span> Copie o comando de instalação gerado</li>
+              <li className="flex gap-2"><span className="text-violet-400 font-bold shrink-0">3.</span> Execute o comando no servidor ou máquina local</li>
+              <li className="flex gap-2"><span className="text-violet-400 font-bold shrink-0">4.</span> O agente aparecerá aqui como <span className="text-green-400">Online</span> em segundos</li>
+            </ol>
+          </div>
+          <a
+            href="http://localhost:4001/agents"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all bg-violet-500/20 text-violet-400 border border-violet-500/30 hover:bg-violet-500/30"
+          >
+            <ExternalLink className="w-3.5 h-3.5" /> Ir para painel Admin
+          </a>
         </div>
       ) : (
         <>

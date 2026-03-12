@@ -162,9 +162,11 @@ export default function TestCaseEditorPage() {
   const [tagInput, setTagInput] = useState('');
   const [tagsInitialized, setTagsInitialized] = useState(false);
   const tagInputRef = useRef<HTMLInputElement>(null);
+  const [showSuggestModal, setShowSuggestModal] = useState(false);
   const [suggestUrl, setSuggestUrl] = useState('');
   const [suggestGoal, setSuggestGoal] = useState('');
   const [suggestionResult, setSuggestionResult] = useState<any | null>(null);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState<{ version: any; vNum: number } | null>(null);
 
   if (tc && !initialized) {
     const parsed = typeof tc.steps === 'string' ? JSON.parse(tc.steps || '[]') : (tc.steps || []);
@@ -296,17 +298,31 @@ export default function TestCaseEditorPage() {
   const applySuggestedSteps = (mode: 'append' | 'replace') => {
     const suggested: any[] = suggestionResult?.suggestedSteps || [];
     if (suggested.length === 0) return;
-    const normalized = suggested.map((step: any, idx: number) => ({
-      type: step.type,
-      order: mode === 'replace' ? idx + 1 : steps.length + idx + 1,
-      params: step.params || {},
-      _id: Date.now() + idx,
-    }));
+    const normalized = suggested.map((step: any, idx: number) => {
+      const meta = getStepMeta(step.type);
+      const baseParams: any = {};
+      if (meta) {
+        for (const f of meta.fields) baseParams[f.key] = f.type === 'number' ? '1000' : '';
+      }
+      const mergedParams = { ...baseParams, ...(step.params || {}) };
+      return {
+        type: step.type,
+        order: mode === 'replace' ? idx + 1 : steps.length + idx + 1,
+        params: mergedParams,
+        _id: Date.now() + idx,
+      };
+    }).filter((s: any) => getStepMeta(s.type) !== null);
+    if (normalized.length === 0) {
+      toast.error('Nenhum step sugerido é compatível com o catálogo de estações');
+      return;
+    }
     setSteps(prev => mode === 'replace' ? normalized : [...prev, ...normalized]);
-    setExpandedIdx(normalized.length > 0 ? 0 : null);
+    setExpandedIdx(0);
     setDirty(true);
-    setShowCatalog(false);
-    toast.info(mode === 'replace' ? 'Fluxo substituído pelas sugestões' : 'Sugestões adicionadas ao fluxo');
+    setShowSuggestModal(false);
+    toast.info(mode === 'replace'
+      ? `Fluxo substituído com ${normalized.length} estações sugeridas`
+      : `${normalized.length} estações adicionadas ao fluxo`);
   };
 
   // Drag handlers
@@ -349,12 +365,127 @@ export default function TestCaseEditorPage() {
         <button
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors"
           style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
-          onClick={() => { setShowCatalog(true); setShowExecHistory(false); setShowHistory(false); }}
+          onClick={() => { setShowSuggestModal(true); setSuggestionResult(null); }}
           title="Gerar sugestão inteligente"
         >
           <Zap className="w-3.5 h-3.5" />
           Sugerir
         </button>
+        {showSuggestModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+            <div className="rounded-xl border w-full max-w-md shadow-2xl flex flex-col" style={{ background: 'var(--surface)', borderColor: 'var(--border)', maxHeight: '90vh' }}>
+              <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-blue-400" />
+                  <span className="font-semibold text-sm" style={{ color: 'var(--text)' }}>Sugestão Inteligente de Estações</span>
+                </div>
+                <button onClick={() => { setShowSuggestModal(false); setSuggestionResult(null); }} className="btn-ghost p-1">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Informe a URL que deseja testar. O sistema irá analisar a página e sugerir um fluxo de estações automaticamente.</p>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>URL da página *</label>
+                  <input
+                    className="input w-full text-sm"
+                    placeholder="https://exemplo.com/login"
+                    value={suggestUrl}
+                    onChange={e => setSuggestUrl(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && suggestUrl.trim() && !suggestSteps.isPending && suggestSteps.mutate()}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Objetivo (opcional)</label>
+                  <input
+                    className="input w-full text-sm"
+                    placeholder="Ex: fazer login e chegar no dashboard"
+                    value={suggestGoal}
+                    onChange={e => setSuggestGoal(e.target.value)}
+                  />
+                </div>
+                <button
+                  className="btn-primary w-full flex items-center justify-center gap-2"
+                  disabled={suggestSteps.isPending || !suggestUrl.trim()}
+                  onClick={() => suggestSteps.mutate()}
+                >
+                  {suggestSteps.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  {suggestSteps.isPending ? 'Analisando página...' : 'Gerar sugestões'}
+                </button>
+
+                {suggestionResult && (
+                  <div className="space-y-3 pt-1">
+                    <div className="rounded-lg p-3 border space-y-2" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>
+                          {suggestionResult.analysis?.title || 'Análise concluída'}
+                        </p>
+                        {suggestionResult.cached && (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">cache</span>
+                        )}
+                      </div>
+                      {suggestionResult.analysis?.description && (
+                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{suggestionResult.analysis.description}</p>
+                      )}
+                    </div>
+
+                    {!!suggestionResult.suggestedSteps?.length && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Fluxo sugerido ({suggestionResult.suggestedSteps.length} estações)</p>
+                        <div className="space-y-1 max-h-48 overflow-y-auto">
+                          {suggestionResult.suggestedSteps.map((step: any, idx: number) => {
+                            const meta = getStepMeta(step.type);
+                            const Icon = meta?.icon;
+                            const colorClass = meta ? (COLOR_MAP[meta.color] || COLOR_MAP.blue) : 'bg-slate-500/10 border-slate-500/30 text-slate-400';
+                            return (
+                              <div key={`${step.type}-${idx}`} className="flex items-start gap-2.5 rounded-lg px-2.5 py-2 border" style={{ borderColor: 'var(--border)' }}>
+                                {Icon && (
+                                  <div className={`w-6 h-6 rounded-md flex items-center justify-center flex-shrink-0 border mt-0.5 ${colorClass}`}>
+                                    <Icon className="w-3 h-3" />
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <p className="text-xs font-medium" style={{ color: meta ? 'var(--text)' : 'var(--text-muted)' }}>
+                                    {idx + 1}. {meta?.label || step.type}
+                                    {!meta && <span className="ml-1 text-amber-400">(tipo desconhecido)</span>}
+                                  </p>
+                                  {step.rationale && (
+                                    <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{step.rationale}</p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {suggestionResult?.suggestedSteps?.length > 0 && (
+                <div className="flex gap-2 px-5 py-4 border-t flex-shrink-0" style={{ borderColor: 'var(--border)' }}>
+                  <button className="btn-primary flex-1 text-sm" onClick={() => applySuggestedSteps('append')}>
+                    + Adicionar ao fluxo
+                  </button>
+                  <button
+                    className="btn-ghost flex-1 text-sm border"
+                    style={{ borderColor: 'var(--border)' }}
+                    onClick={() => {
+                      if (steps.length > 0) {
+                        setShowRestoreConfirm({ version: null, vNum: -1 });
+                      } else {
+                        applySuggestedSteps('replace');
+                      }
+                    }}
+                  >
+                    Substituir tudo
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {dirty && <span className="text-xs text-amber-400 font-medium">● não salvo</span>}
         <button
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg border transition-colors relative"
@@ -407,90 +538,6 @@ export default function TestCaseEditorPage() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-4">
-              <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Sugestão inteligente</p>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Analise uma URL para receber seletores e um fluxo inicial de steps.</p>
-                </div>
-                <div className="space-y-2">
-                  <input
-                    className="input w-full text-sm"
-                    placeholder="https://exemplo.com/login"
-                    value={suggestUrl}
-                    onChange={e => setSuggestUrl(e.target.value)}
-                  />
-                  <input
-                    className="input w-full text-sm"
-                    placeholder="Objetivo opcional: fazer login e chegar no dashboard"
-                    value={suggestGoal}
-                    onChange={e => setSuggestGoal(e.target.value)}
-                  />
-                </div>
-                <button
-                  className="btn-primary w-full flex items-center justify-center gap-2"
-                  disabled={suggestSteps.isPending || !suggestUrl.trim()}
-                  onClick={() => suggestSteps.mutate()}
-                >
-                  {suggestSteps.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                  {suggestSteps.isPending ? 'Analisando...' : 'Gerar sugestões'}
-                </button>
-                {suggestionResult && (
-                  <div className="space-y-3 pt-1">
-                    <div className="rounded-lg p-3 border space-y-2" style={{ borderColor: 'var(--border)' }}>
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>
-                          {suggestionResult.analysis?.title || 'Sugestões geradas'}
-                        </p>
-                        {suggestionResult.cached && (
-                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">cache</span>
-                        )}
-                      </div>
-                      {suggestionResult.analysis?.description && (
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{suggestionResult.analysis.description}</p>
-                      )}
-                      <div className="space-y-1">
-                        {(suggestionResult.analysis?.signals || []).map((signal: string) => (
-                          <p key={signal} className="text-xs" style={{ color: 'var(--text-muted)' }}>- {signal}</p>
-                        ))}
-                      </div>
-                    </div>
-                    {!!suggestionResult.analysis?.selectorHints?.length && (
-                      <div className="space-y-1">
-                        <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Seletores sugeridos</p>
-                        {suggestionResult.analysis.selectorHints.map((hint: any, idx: number) => (
-                          <div key={`${hint.selector}-${idx}`} className="rounded-lg px-2.5 py-2 border" style={{ borderColor: 'var(--border)' }}>
-                            <p className="text-xs font-mono" style={{ color: 'var(--text)' }}>{hint.selector}</p>
-                            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{hint.reason}</p>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {!!suggestionResult.suggestedSteps?.length && (
-                      <div className="space-y-2">
-                        <p className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Fluxo sugerido</p>
-                        {suggestionResult.suggestedSteps.map((step: any, idx: number) => (
-                          <div key={`${step.type}-${idx}`} className="rounded-lg px-2.5 py-2 border" style={{ borderColor: 'var(--border)' }}>
-                            <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>{idx + 1}. {getStepMeta(step.type)?.label || step.type}</p>
-                            <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{step.rationale}</p>
-                          </div>
-                        ))}
-                        <div className="flex gap-2">
-                          <button className="btn-primary flex-1" onClick={() => applySuggestedSteps('append')}>Adicionar ao fluxo</button>
-                          <button
-                            className="btn-ghost flex-1"
-                            onClick={() => {
-                              if (steps.length > 0 && !confirm('Substituir todos os steps atuais pelas sugestões?')) return;
-                              applySuggestedSteps('replace');
-                            }}
-                          >
-                            Substituir tudo
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
               {STEP_CATALOG.map(group => (
                 <div key={group.group}>
                   <p className="text-xs font-semibold uppercase tracking-wider mb-2 px-1" style={{ color: 'var(--text-muted)' }}>{group.group}</p>
@@ -773,14 +820,7 @@ export default function TestCaseEditorPage() {
                           className="flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors"
                           style={{ background: 'var(--sidebar-active-bg)', color: 'var(--sidebar-active-text)' }}
                           title="Restaurar esta versão"
-                          onClick={() => {
-                            if (!confirm(`Restaurar versão ${v.version}? Alterações não salvas serão perdidas.`)) return;
-                            const parsed = typeof v.steps === 'string' ? JSON.parse(v.steps) : v.steps;
-                            setSteps(parsed.map((s: any, idx: number) => ({ ...s, _id: idx })));
-                            setDirty(true);
-                            setShowHistory(false);
-                            toast.info(`Versão ${v.version} restaurada — salve para confirmar`);
-                          }}
+                          onClick={() => setShowRestoreConfirm({ version: v, vNum: v.version })}
                         >
                           <RotateCcw className="w-3 h-3" /> Restaurar
                         </button>
@@ -795,6 +835,50 @@ export default function TestCaseEditorPage() {
 
         {/* Inline add station button when catalog closed */}
       </div>
+
+      {/* Restore / Replace confirm modal */}
+      {showRestoreConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="rounded-xl border p-6 w-full max-w-sm shadow-2xl" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+            <h3 className="text-base font-semibold mb-2" style={{ color: 'var(--text)' }}>
+              {showRestoreConfirm.vNum === -1 ? 'Substituir steps atuais?' : `Restaurar versão ${showRestoreConfirm.vNum}?`}
+            </h3>
+            <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
+              {showRestoreConfirm.vNum === -1
+                ? 'Os steps atuais serão substituídos pelas estações sugeridas. Esta ação não pode ser desfeita (exceto salvando antes).'
+                : 'Os steps atuais serão substituídos pelos da versão selecionada. Salve para confirmar a restauração.'}
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                className="px-4 py-2 rounded-lg text-sm font-medium border transition-colors"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                onClick={() => setShowRestoreConfirm(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-colors"
+                onClick={() => {
+                  if (showRestoreConfirm.vNum === -1) {
+                    setShowRestoreConfirm(null);
+                    applySuggestedSteps('replace');
+                  } else {
+                    const v = showRestoreConfirm.version;
+                    const parsed = typeof v.steps === 'string' ? JSON.parse(v.steps) : v.steps;
+                    setSteps(parsed.map((s: any, idx: number) => ({ ...s, _id: idx })));
+                    setDirty(true);
+                    setShowHistory(false);
+                    setShowRestoreConfirm(null);
+                    toast.info(`Versão ${showRestoreConfirm.vNum} restaurada — salve para confirmar`);
+                  }
+                }}
+              >
+                {showRestoreConfirm.vNum === -1 ? 'Substituir' : 'Restaurar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Run Modal */}
       {showRunModal && (

@@ -1,9 +1,16 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import rateLimit from 'express-rate-limit';
 import { getDb } from '../../db/schema';
 import { authenticate, requireRole } from '../../shared/middleware/auth';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
+
+const testIntegrationLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 10,
+  message: { error: 'Muitas tentativas de teste de integração. Aguarde 1 minuto.' },
+});
 
 const router = Router();
 router.use(authenticate);
@@ -12,6 +19,11 @@ const includeFlagsSchema = z.object({
   detailed_report: z.boolean().default(false),
   steps: z.boolean().default(false),
   artifacts: z.boolean().default(false),
+  environment_info: z.boolean().default(false),
+  browser_info: z.boolean().default(false),
+  error_summary: z.boolean().default(false),
+  retry_info: z.boolean().default(false),
+  flaky_detection: z.boolean().default(false),
 });
 
 const smtpConfigSchema = z.object({
@@ -26,10 +38,27 @@ const smtpConfigSchema = z.object({
 }).optional();
 
 const integrationBaseSchema = z.object({
-  type: z.enum(['discord', 'slack', 'teams', 'webhook', 'telegram', 'pagerduty', 'smtp']),
+  type: z.enum(['discord', 'slack', 'teams', 'webhook', 'telegram', 'pagerduty', 'smtp', 'jira', 'github', 'mattermost', 'opsgenie', 'grafana', 'linear', 'datadog']),
+  jira_config: z.object({
+    base_url: z.string().optional(),
+    email: z.string().optional(),
+    api_token: z.string().optional(),
+    project_key: z.string().optional(),
+    issue_type: z.string().default('Bug'),
+  }).optional(),
+  github_config: z.object({
+    repo: z.string().optional(),
+    token: z.string().optional(),
+    labels: z.array(z.string()).default(['gostate', 'automated-test']),
+  }).optional(),
   label: z.string().min(1).max(120),
   webhook_url: z.string().default('').optional(),
-  events: z.array(z.enum(['execution.passed', 'execution.failed', 'execution.error', 'execution.started'])).default(['execution.failed']),
+  events: z.array(z.enum([
+    'execution.passed', 'execution.failed', 'execution.error', 'execution.started',
+    'execution.queued', 'execution.retried', 'execution.flaky',
+    'plan.finished', 'plan.started',
+    'schedule.triggered',
+  ])).default(['execution.failed']),
   enabled: z.boolean().default(true),
   project_id: z.string().uuid().nullable().optional(),
   include_flags: includeFlagsSchema.default({}),
@@ -37,7 +66,7 @@ const integrationBaseSchema = z.object({
 });
 
 const integrationSchema = integrationBaseSchema.superRefine((data, ctx) => {
-  if (data.type !== 'smtp' && !data.webhook_url) {
+  if (!['smtp', 'jira', 'github', 'linear', 'opsgenie', 'datadog'].includes(data.type) && !data.webhook_url) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'webhook_url é obrigatório para este tipo', path: ['webhook_url'] });
   }
   if (data.type === 'smtp') {
@@ -146,6 +175,18 @@ router.patch('/:id', requireRole('admin'), (req: any, res) => {
   });
 });
 
+router.get('/:id/deliveries', requireRole('admin'), (req: any, res) => {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT id, event, status, status_code, error, created_at
+    FROM integration_deliveries
+    WHERE integration_id = ?
+    ORDER BY created_at DESC
+    LIMIT 50
+  `).all(req.params.id);
+  res.json({ deliveries: rows });
+});
+
 router.delete('/:id', requireRole('admin'), (req: any, res) => {
   const db = getDb();
   const { id } = req.params;
@@ -155,7 +196,7 @@ router.delete('/:id', requireRole('admin'), (req: any, res) => {
   res.status(204).end();
 });
 
-router.post('/:id/test', requireRole('admin'), async (req: any, res) => {
+router.post('/:id/test', requireRole('admin'), testIntegrationLimiter, async (req: any, res) => {
   const db = getDb();
   const { id } = req.params;
   const integration = db.prepare('SELECT * FROM integrations WHERE id = ?').get(id) as any;
@@ -281,31 +322,54 @@ export type WebhookData = {
   project: string;
   duration_ms: number;
   from_schedule?: boolean;
+  event?: string;
+  execution_id?: string;
+  environment?: string;
+  browsers?: string[];
+  agent?: string;
+  retry_count?: number;
+  flaky?: boolean;
   steps?: Array<{ name: string; status: string; duration_ms?: number; error_message?: string }>;
   detailed_report?: {
     total_steps: number;
     passed_steps: number;
     failed_steps: number;
     skipped_steps: number;
+    pass_rate?: number;
     logs?: string;
   };
+  error_summary?: string;
   artifacts?: string[];
+  artifact_urls?: Array<{ filename: string; url: string }>;
 };
 
 export function buildPayload(type: string, data: WebhookData) {
-  const emoji = data.status === 'passed' ? '✅' : data.status === 'failed' ? '❌' : '⚠️';
-  const color = data.status === 'passed' ? 3066993 : data.status === 'failed' ? 15158332 : 15844367;
+  const emoji = data.status === 'passed' ? '✅' : data.status === 'failed' ? '❌' : data.status === 'running' ? '🔄' : data.status === 'queued' ? '⏳' : '⚠️';
+  const color = data.status === 'passed' ? 3066993 : data.status === 'failed' ? 15158332 : data.status === 'running' ? 3447003 : 15844367;
   const scheduleTag = data.from_schedule ? ' ⏰' : '';
   const scheduleSuffix = data.from_schedule ? '\n**Origem:** ⏰ Agendamento' : '';
+  const flakyTag = data.flaky ? ' ⚡ _Flaky_' : '';
+  const retryTag = data.retry_count && data.retry_count > 0 ? `\n**Tentativa:** #${data.retry_count + 1}` : '';
 
   // Build report section text
   let reportText = '';
   if (data.detailed_report) {
     const r = data.detailed_report;
-    reportText = `\n**Relatório:** ${r.total_steps} steps — ✅ ${r.passed_steps} passou · ❌ ${r.failed_steps} falhou · ⏭ ${r.skipped_steps} pulado`;
+    const rate = r.pass_rate != null ? ` (${r.pass_rate.toFixed(0)}%)` : '';
+    reportText = `\n**Relatório:** ${r.total_steps} steps — ✅ ${r.passed_steps} passou${rate} · ❌ ${r.failed_steps} falhou · ⏭ ${r.skipped_steps} pulado`;
   }
 
-  // Build steps section text (collapsed in Discord via code block)
+  // Environment/browser info
+  let envText = '';
+  if (data.environment) envText += `\n**Ambiente:** ${data.environment}`;
+  if (data.browsers && data.browsers.length > 0) envText += `\n**Browser(s):** ${data.browsers.join(', ')}`;
+  if (data.agent) envText += `\n**Agente:** ${data.agent}`;
+
+  // Error summary
+  let errorText = '';
+  if (data.error_summary) errorText = `\n**Erro:** \`${data.error_summary.slice(0, 200)}\``;
+
+  // Build steps section text
   let stepsText = '';
   if (data.steps && data.steps.length > 0) {
     const lines = data.steps.map((s, i) => {
@@ -319,26 +383,30 @@ export function buildPayload(type: string, data: WebhookData) {
 
   // Artifacts
   let artifactsText = '';
-  if (data.artifacts && data.artifacts.length > 0) {
+  if (data.artifact_urls && data.artifact_urls.length > 0) {
+    artifactsText = `\n**Artefatos:** ${data.artifact_urls.map(a => `[${a.filename}](${a.url})`).join(', ')}`;
+  } else if (data.artifacts && data.artifacts.length > 0) {
     artifactsText = `\n**Artefatos:** ${data.artifacts.join(', ')}`;
   }
 
-  if (type === 'discord') {
-    // Find first image attachment to embed inline
-    const firstImage = data.artifacts?.find(f =>
-      f.endsWith('.png') || f.endsWith('.jpg') || f.endsWith('.jpeg')
+  if (type === 'discord' || type === 'mattermost') {
+    const firstImage = data.artifact_urls?.find(a =>
+      a.filename.endsWith('.png') || a.filename.endsWith('.jpg') || a.filename.endsWith('.jpeg')
     );
     const embed: any = {
       title: `${emoji} ${data.title}${scheduleTag}`,
-      description: `**Projeto:** ${data.project}\n**Status:** ${data.status}\n**Duração:** ${(data.duration_ms / 1000).toFixed(1)}s${scheduleSuffix}${reportText}${artifactsText}${stepsText}`,
+      description: [
+        `**Projeto:** ${data.project}`,
+        `**Status:** ${data.status.toUpperCase()}${flakyTag}`,
+        `**Duração:** ${(data.duration_ms / 1000).toFixed(1)}s`,
+        scheduleSuffix.trim(), retryTag.trim(), envText.trim(), reportText.trim(), errorText.trim(), artifactsText.trim(), stepsText.trim(),
+      ].filter(Boolean).join('\n'),
       color,
-      footer: { text: 'goState Test Automation' },
+      footer: { text: `goState · ${data.event || 'execution'} · ${new Date().toLocaleString('pt-BR')}` },
       timestamp: new Date().toISOString(),
     };
-    if (firstImage) {
-      embed.image = { url: `attachment://${firstImage}` };
-    }
-    return { embeds: [embed] };
+    if (firstImage) embed.image = { url: firstImage.url };
+    return type === 'mattermost' ? { text: `${emoji} **${data.title}** — ${data.status}`, attachments: [embed] } : { embeds: [embed] };
   }
 
   if (type === 'slack') {
@@ -346,25 +414,83 @@ export function buildPayload(type: string, data: WebhookData) {
     const reportSlack = data.detailed_report
       ? `\n*Relatório:* ${data.detailed_report.total_steps} steps — ✅ ${data.detailed_report.passed_steps} · ❌ ${data.detailed_report.failed_steps} · ⏭ ${data.detailed_report.skipped_steps}`
       : '';
+    const envSlack = data.environment ? `\n*Ambiente:* ${data.environment}` : '';
+    const browserSlack = data.browsers?.length ? `\n*Browser:* ${data.browsers.join(', ')}` : '';
+    const errorSlack = data.error_summary ? `\n*Erro:* \`${data.error_summary.slice(0, 150)}\`` : '';
+    const flakySlack = data.flaky ? ' ⚡ _flaky_' : '';
+    const retrySlack = data.retry_count && data.retry_count > 0 ? `\n*Tentativa:* #${data.retry_count + 1}` : '';
+    const artsSlack = data.artifact_urls?.length
+      ? `\n*Artefatos:* ${data.artifact_urls.map(a => `<${a.url}|${a.filename}>`).join(', ')}`
+      : data.artifacts?.length ? `\n*Artefatos:* ${data.artifacts.join(', ')}` : '';
     return {
-      text: `${emoji} *${data.title}* — ${data.status}${data.from_schedule ? ' _(agendamento)_' : ''}`,
+      text: `${emoji} *${data.title}* — ${data.status}${flakySlack}${data.from_schedule ? ' _(agendamento)_' : ''}`,
       blocks: [{
         type: 'section',
-        text: { type: 'mrkdwn', text: `${emoji} *${data.title}*\n*Projeto:* ${data.project} | *Status:* ${data.status} | *Duração:* ${(data.duration_ms / 1000).toFixed(1)}s${schedFlag}${reportSlack}` },
+        text: { type: 'mrkdwn', text: `${emoji} *${data.title}*\n*Projeto:* ${data.project} | *Status:* ${data.status}${flakySlack} | *Duração:* ${(data.duration_ms / 1000).toFixed(1)}s${schedFlag}${retrySlack}${envSlack}${browserSlack}${reportSlack}${errorSlack}${artsSlack}` },
       }],
     };
   }
 
+  if (type === 'opsgenie') {
+    const priority = data.status === 'failed' || data.status === 'error' ? 'P2' : 'P5';
+    return {
+      message: `[goState] ${data.title} — ${data.status.toUpperCase()}`,
+      description: `Projeto: ${data.project}\nDuração: ${(data.duration_ms / 1000).toFixed(1)}s${data.environment ? `\nAmbiente: ${data.environment}` : ''}${data.error_summary ? `\nErro: ${data.error_summary}` : ''}`,
+      priority,
+      tags: ['gostate', `status:${data.status}`, `project:${data.project.toLowerCase().replace(/\s/g, '-')}`],
+      details: { project: data.project, status: data.status, duration_ms: String(data.duration_ms) },
+    };
+  }
+
+  if (type === 'datadog') {
+    return {
+      title: `[goState] ${data.title}`,
+      text: `%%% \n**Status:** ${data.status}\n**Projeto:** ${data.project}\n**Duração:** ${(data.duration_ms / 1000).toFixed(1)}s${data.environment ? `\n**Ambiente:** ${data.environment}` : ''}${data.error_summary ? `\n**Erro:** ${data.error_summary}` : ''} \n%%%`,
+      alert_type: data.status === 'passed' ? 'success' : data.status === 'failed' ? 'error' : 'warning',
+      tags: [`project:${data.project}`, `status:${data.status}`, 'source:gostate'],
+      source_type_name: 'goState',
+    };
+  }
+
+  if (type === 'grafana') {
+    return {
+      state: data.status === 'passed' ? 'ok' : data.status === 'failed' ? 'alerting' : 'pending',
+      message: `[goState] ${data.title} — ${data.status}`,
+      ruleName: data.title,
+      ruleUrl: '',
+      evalMatches: [{ value: data.duration_ms, metric: 'duration_ms', tags: { project: data.project, status: data.status } }],
+    };
+  }
+
+  if (type === 'linear') {
+    return {
+      title: `[goState] ${data.title} falhou`,
+      description: `**Projeto:** ${data.project}\n**Status:** ${data.status}\n**Duração:** ${(data.duration_ms / 1000).toFixed(1)}s${data.error_summary ? `\n**Erro:** ${data.error_summary}` : ''}`,
+      priority: 1,
+      labelIds: [],
+    };
+  }
+
+  // Generic webhook / teams / telegram / pagerduty / jira / github
   return {
-    event: 'execution.finished',
+    event: data.event || 'execution.finished',
     status: data.status,
     title: data.title,
     project: data.project,
     duration_ms: data.duration_ms,
+    duration_s: parseFloat((data.duration_ms / 1000).toFixed(1)),
     from_schedule: data.from_schedule || false,
+    timestamp: new Date().toISOString(),
+    ...(data.execution_id ? { execution_id: data.execution_id } : {}),
+    ...(data.environment ? { environment: data.environment } : {}),
+    ...(data.browsers?.length ? { browsers: data.browsers } : {}),
+    ...(data.agent ? { agent: data.agent } : {}),
+    ...(data.flaky !== undefined ? { flaky: data.flaky } : {}),
+    ...(data.retry_count !== undefined ? { retry_count: data.retry_count } : {}),
+    ...(data.error_summary ? { error_summary: data.error_summary } : {}),
     ...(data.detailed_report ? { report: data.detailed_report } : {}),
     ...(data.steps ? { steps: data.steps } : {}),
-    ...(data.artifacts ? { artifacts: data.artifacts } : {}),
+    ...(data.artifact_urls ? { artifacts: data.artifact_urls } : data.artifacts ? { artifacts: data.artifacts } : {}),
   };
 }
 

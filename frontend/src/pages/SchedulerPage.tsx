@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { schedulesApi, projectsApi, agentsApi, environmentsApi, testPlansApi, executionsApi } from '../lib/api';
 import { formatDate, formatDuration, statusBadgeClass, statusLabel } from '../lib/utils';
 import { Plus, Clock, Trash2, Loader2, ToggleLeft, ToggleRight, CalendarClock, PlayCircle, ChevronRight, Pencil, Check, X, History, ExternalLink, Play } from 'lucide-react';
+import CronBuilder from '../components/CronBuilder';
 import { useToast } from '../components/Toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -217,7 +218,7 @@ export default function SchedulerPage() {
   const runNow = useMutation({
     mutationFn: (s: any) => {
       if (s.test_plan_id) {
-        return import('../lib/api').then(m => m.testPlansApi.run(s.test_plan_id));
+        return testPlansApi.run(s.test_plan_id);
       }
       return executionsApi.create({
         project_id: s.project_id || undefined,
@@ -309,24 +310,9 @@ export default function SchedulerPage() {
                 {agents.map((a: any) => <option key={a.id} value={a.id}>{a.name} {a.status === 'online' ? '●' : '○'}</option>)}
               </select>
             </div>
-            <div>
+            <div className="col-span-2">
               <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Frequência</label>
-              {!customCron ? (
-                <div className="flex gap-2">
-                  <select className="input flex-1" value={form.cron} onChange={e => setForm(f => ({ ...f, cron: e.target.value }))}>
-                    {CRON_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
-                  </select>
-                  <button className="btn-ghost text-xs px-2" onClick={() => setCustomCron(true)} title="Expressão customizada">
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  <input className="input flex-1 font-mono text-sm" placeholder="* * * * *" value={form.cron} onChange={e => setForm(f => ({ ...f, cron: e.target.value }))} />
-                  <button className="btn-ghost text-xs px-2" onClick={() => setCustomCron(false)}>←</button>
-                </div>
-              )}
-              <p className="text-xs text-slate-600 mt-1">Expressão: <code className="text-blue-400">{form.cron}</code></p>
+              <CronBuilder value={form.cron} onChange={v => setForm(f => ({ ...f, cron: v }))} />
             </div>
             <div>
               <label className="block text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>Browser</label>

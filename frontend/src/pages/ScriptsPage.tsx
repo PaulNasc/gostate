@@ -27,6 +27,8 @@ export default function ScriptsPage() {
   const [selected, setSelected] = useState<any | null>(null);
   const [editorContent, setEditorContent] = useState('');
   const [dirty, setDirty] = useState(false);
+  const [pendingScript, setPendingScript] = useState<any | null>(null);
+  const [showDiscardModal, setShowDiscardModal] = useState(false);
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState('');
   const [newProject, setNewProject] = useState('');
@@ -124,10 +126,24 @@ export default function ScriptsPage() {
   });
 
   function selectScript(s: any) {
-    if (dirty && !confirm('Há alterações não salvas. Deseja descartar?')) return;
+    if (dirty) {
+      setPendingScript(s);
+      setShowDiscardModal(true);
+      return;
+    }
     setSelected(s);
     setEditorContent(s.content);
     setDirty(false);
+  }
+
+  function confirmDiscard() {
+    if (pendingScript) {
+      setSelected(pendingScript);
+      setEditorContent(pendingScript.content);
+      setDirty(false);
+      setPendingScript(null);
+    }
+    setShowDiscardModal(false);
   }
 
   function handleEditorChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -200,6 +216,30 @@ export default function ScriptsPage() {
 
   return (
     <div className="flex h-full" style={{ height: 'calc(100vh - 0px)' }}>
+      {/* Discard confirmation modal */}
+      {showDiscardModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="rounded-xl border p-6 w-full max-w-sm shadow-2xl" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+            <h3 className="text-base font-semibold mb-2" style={{ color: 'var(--text)' }}>Alterações não salvas</h3>
+            <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>Há alterações não salvas neste script. Deseja descartá-las e abrir outro script?</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                className="px-4 py-2 rounded-lg text-sm font-medium border transition-colors"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                onClick={() => { setShowDiscardModal(false); setPendingScript(null); }}
+              >
+                Cancelar
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-colors"
+                onClick={confirmDiscard}
+              >
+                Descartar e abrir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Sidebar */}
       <div className="w-64 border-r flex flex-col flex-shrink-0" style={{ borderColor: 'var(--border)', background: 'var(--surface)' }}>
         <div className="p-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
@@ -243,9 +283,12 @@ export default function ScriptsPage() {
           {isLoading ? (
             <div className="flex justify-center py-8"><Loader2 className="w-4 h-4 animate-spin text-slate-500" /></div>
           ) : scripts.length === 0 ? (
-            <div className="p-4 text-center">
-              <FileCode className="w-8 h-8 text-slate-600 mx-auto mb-2" />
-              <p className="text-xs text-slate-500">Nenhum script</p>
+            <div className="p-6 text-center">
+              <FileCode className="w-8 h-8 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
+              <p className="text-xs font-medium mb-1" style={{ color: 'var(--text)' }}>Nenhum script</p>
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                Crie um script Playwright para executar testes customizados
+              </p>
             </div>
           ) : (
             scripts.map(s => (

@@ -18,9 +18,9 @@ const scheduleSchema = z.object({
 });
 
 router.use(authenticate);
-const db = getDb();
 
 router.get('/', (req: any, res) => {
+  const db = getDb();
   try {
     const rows = db.prepare(`
       SELECT s.*, tc.title as tc_title, p.name as project_name, tp.name as plan_name
@@ -45,6 +45,7 @@ router.post('/', (req: any, res) => {
     return res.status(400).json({ error: 'Informe test_case_id, test_plan_id ou project_id' });
   }
 
+  const db = getDb();
   const id = uuidv4();
   const now = new Date().toISOString();
   try {
@@ -62,8 +63,8 @@ router.post('/', (req: any, res) => {
 
 router.patch('/:id', (req: any, res) => {
   const { id } = req.params;
-  const db2 = getDb();
-  const schedule: any = db2.prepare('SELECT * FROM schedules WHERE id = ?').get(id);
+  const db = getDb();
+  const schedule: any = db.prepare('SELECT * FROM schedules WHERE id = ?').get(id);
   if (!schedule) return res.status(404).json({ error: 'Agendamento não encontrado' });
 
   const body = scheduleSchema.partial().safeParse(req.body);
@@ -92,6 +93,7 @@ router.patch('/:id', (req: any, res) => {
 });
 
 router.delete('/:id', (req: any, res) => {
+  const db = getDb();
   const { id } = req.params;
   const schedule = db.prepare('SELECT id FROM schedules WHERE id = ?').get(id);
   if (!schedule) return res.status(404).json({ error: 'Agendamento não encontrado' });

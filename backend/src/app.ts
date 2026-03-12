@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
 import { errorHandler, notFound } from './shared/middleware/error';
+import { getDb } from './db/schema';
 import authRoutes from './modules/auth/auth.routes';
 import usersRoutes from './modules/users/users.routes';
 import projectsRoutes from './modules/projects/projects.routes';
@@ -19,13 +20,18 @@ import environmentsRoutes from './modules/environments/environments.routes';
 import projectMembersRoutes from './modules/projects/project-members.routes';
 import auditRoutes from './modules/audit/audit.routes';
 import adminRoutes from './modules/admin/admin.routes';
+import apiTokensRoutes from './modules/api-tokens/api-tokens.routes';
 
 export function createApp() {
   const app = express();
 
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
+  const corsOrigin = process.env.CORS_ORIGIN || '*';
+  if (corsOrigin === '*' && process.env.NODE_ENV === 'production') {
+    console.warn('[goState] WARNING: CORS_ORIGIN not set — allowing all origins (*). Set CORS_ORIGIN in production.');
+  }
   app.use(cors({
-    origin: process.env.CORS_ORIGIN || '*',
+    origin: corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Agent-Token'],
   }));
@@ -35,7 +41,25 @@ export function createApp() {
   app.use('/data/artifacts', express.static(path.join(__dirname, '..', 'data', 'artifacts')));
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString(), version: '1.0.0', uptime: Math.round(process.uptime()) });
+    try {
+      const db = getDb();
+      const row = db.prepare('SELECT 1 AS ok').get() as { ok: number } | undefined;
+      if (!row || row.ok !== 1) throw new Error('DB check failed');
+      res.json({
+        status: 'ok',
+        timestamp: new Date().toISOString(),
+        version: process.env.npm_package_version || '1.0.0',
+        uptime: Math.round(process.uptime()),
+        db: 'ok',
+      });
+    } catch (err) {
+      res.status(503).json({
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        db: 'unavailable',
+        error: err instanceof Error ? err.message : 'unknown',
+      });
+    }
   });
 
   app.use('/api/auth', authRoutes);
@@ -54,6 +78,7 @@ export function createApp() {
   app.use('/api/projects/:projectId/members', projectMembersRoutes);
   app.use('/api/audit', auditRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/me/tokens', apiTokensRoutes);
 
   app.use('/api/artifacts/:execId/:filename', (req, res) => {
     const filePath = path.join(__dirname, '..', 'data', 'artifacts', `exec_${req.params.execId}`, req.params.filename);

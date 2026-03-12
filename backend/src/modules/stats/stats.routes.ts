@@ -58,6 +58,68 @@ router.get('/', (req: AuthRequest, res: Response) => {
     LIMIT 15
   `).all();
 
+  // --- Flakiness: test cases with alternating pass/fail in last 20 executions ---
+  const tcWithExecs = db.prepare(`
+    SELECT e.test_case_id, tc.title as tc_title, e.status
+    FROM executions e
+    JOIN test_cases tc ON tc.id = e.test_case_id
+    WHERE e.test_case_id IS NOT NULL
+      AND e.status IN ('passed', 'failed', 'error')
+      AND e.created_at >= datetime('now', '-30 days')
+    ORDER BY e.test_case_id, e.created_at DESC
+  `).all() as any[];
+
+  const byTc: Record<string, { title: string; statuses: number[] }> = {};
+  for (const row of tcWithExecs) {
+    if (!byTc[row.test_case_id]) byTc[row.test_case_id] = { title: row.tc_title, statuses: [] };
+    if (byTc[row.test_case_id].statuses.length < 20) {
+      byTc[row.test_case_id].statuses.push(row.status === 'passed' ? 1 : 0);
+    }
+  }
+
+  const flakyTcs = Object.entries(byTc)
+    .filter(([, { statuses }]) => statuses.length >= 4)
+    .map(([id, { title, statuses }]) => {
+      let switches = 0;
+      for (let i = 1; i < statuses.length; i++) {
+        if (statuses[i] !== statuses[i - 1]) switches++;
+      }
+      const score = statuses.length > 1 ? switches / (statuses.length - 1) : 0;
+      return { id, title, score: Math.round(score * 100) / 100, total: statuses.length };
+    })
+    .filter(t => t.score > 0.2)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+
+  // --- Avg duration per project (last 7 days) ---
+  const avgByProjectRows = db.prepare(`
+    SELECT
+      p.id as project_id,
+      p.name as project_name,
+      COUNT(*) as exec_count,
+      AVG(e.duration_ms) as avg_duration_ms
+    FROM executions e
+    LEFT JOIN test_cases tc ON tc.id = e.test_case_id
+    LEFT JOIN suites su ON su.id = tc.suite_id
+    LEFT JOIN scripts s ON s.id = e.script_id
+    LEFT JOIN projects p ON p.id = COALESCE(s.project_id, su.project_id)
+    WHERE e.status IN ('passed', 'failed', 'error')
+      AND e.duration_ms IS NOT NULL AND e.duration_ms > 0
+      AND e.created_at >= datetime('now', '-7 days')
+      AND p.id IS NOT NULL
+    GROUP BY p.id
+    HAVING COUNT(*) >= 2
+    ORDER BY avg_duration_ms DESC
+    LIMIT 5
+  `).all() as any[];
+
+  const avgByProject = avgByProjectRows.map((r: any) => ({
+    id: r.project_id,
+    name: r.project_name,
+    avg: Math.round(r.avg_duration_ms),
+    count: r.exec_count,
+  }));
+
   res.json({
     projects: totalProjects,
     suites: totalSuites,
@@ -75,6 +137,8 @@ router.get('/', (req: AuthRequest, res: Response) => {
     },
     last7days,
     recent: recentExecs,
+    flaky_tcs: flakyTcs,
+    avg_by_project: avgByProject,
   });
 });
 

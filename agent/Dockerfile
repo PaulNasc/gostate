@@ -3,6 +3,7 @@ FROM node:20-slim
 # System dependencies required by Playwright browsers
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    curl \
     fonts-liberation \
     libappindicator3-1 \
     libasound2 \
@@ -44,16 +45,27 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+# Install dependencies first (better layer caching)
 COPY package*.json ./
-RUN npm install
+RUN npm ci --omit=dev=false
 
-
-# RUN npx playwright install --with-deps firefox webkit
+# Install Playwright browsers — chromium only by default
+# To enable all browsers, change the line below to:
+#   RUN npx playwright install --with-deps
+ENV PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
 RUN npx playwright install --with-deps chromium
 
+# Copy source and build
 COPY . .
-
-# Build TypeScript to JS for production run
 RUN npm run build
+
+# Runtime environment defaults (override via docker-compose or -e flags)
+ENV NODE_ENV=production
+ENV AGENT_MAX_CONCURRENT=3
+ENV BACKEND_URL=http://host.docker.internal:4000
+
+# Healthcheck: verify process is alive (agent has no HTTP port by default)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD node -e "require('fs').statSync('/proc/1/status')" || exit 1
 
 CMD ["node", "dist/agent.js"]

@@ -1,14 +1,46 @@
 services:
-  agent-teste--1:
+  agent:
     build: .
     restart: unless-stopped
     environment:
-      AGENT_TOKEN: your-agent-token-here
-      BACKEND_URL: http://host.docker.internal:4000
+      AGENT_TOKEN: ${AGENT_TOKEN:?AGENT_TOKEN is required}
+      # LOCAL (backend na mesma máquina): use host.docker.internal
+      # REMOTE (backend em servidor externo): use o IP/domínio público
+      #   BACKEND_URL: https://gostate.suaempresa.com
+      #   BACKEND_URL: http://1.2.3.4:4000
+      BACKEND_URL: ${BACKEND_URL:-http://host.docker.internal:4000}
       NODE_ENV: production
-      AGENT_MAX_CONCURRENT: 3
+      AGENT_MAX_CONCURRENT: ${AGENT_MAX_CONCURRENT:-3}
       PLAYWRIGHT_BROWSERS_PATH: /root/.cache/ms-playwright
     extra_hosts:
+      # Necessário somente para deploy LOCAL (acesso ao host via Docker)
+      # Em deploy remoto (VPS/AWS) remova esta linha
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('fs').statSync('/proc/1/status')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    # Limites de recursos recomendados para produção
+    # Ajuste conforme o número de browsers paralelos (AGENT_MAX_CONCURRENT)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          memory: 512M
+    # Persistência dos logs do agente (opcional)
+    volumes:
+      - agent_logs:/app/logs
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  agent_logs:
 
       

@@ -1,6 +1,8 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
+import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 
 const DB_DIR = path.join(__dirname, '..', '..', 'data');
 if (!fs.existsSync(DB_DIR)) fs.mkdirSync(DB_DIR, { recursive: true });
@@ -324,6 +326,60 @@ function runMigrations(db: Database.Database): void {
       `
     },
     {
+      version: 10,
+      sql: `
+        CREATE TABLE IF NOT EXISTS audit_logs (
+          id TEXT PRIMARY KEY,
+          user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+          action TEXT NOT NULL,
+          entity TEXT NOT NULL,
+          entity_id TEXT,
+          detail TEXT,
+          ip TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+        CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity);
+      `
+    },
+    {
+      version: 11,
+      sql: `ALTER TABLE executions ADD COLUMN schedule_id TEXT REFERENCES schedules(id) ON DELETE SET NULL;`
+    },
+    {
+      version: 12,
+      sql: `
+        ALTER TABLE integrations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE CASCADE;
+        ALTER TABLE integrations ADD COLUMN include_flags TEXT NOT NULL DEFAULT '{}';
+      `
+    },
+    {
+      version: 14,
+      sql: `
+        CREATE TABLE IF NOT EXISTS integrations_new (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL CHECK(type IN ('discord','slack','teams','webhook','telegram','pagerduty','smtp')),
+          label TEXT NOT NULL,
+          webhook_url TEXT NOT NULL DEFAULT '',
+          events TEXT NOT NULL DEFAULT '["execution.failed"]',
+          enabled INTEGER NOT NULL DEFAULT 1,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
+          include_flags TEXT NOT NULL DEFAULT '{}',
+          smtp_config TEXT NOT NULL DEFAULT '{}'
+        );
+        INSERT INTO integrations_new SELECT id, type, label, webhook_url, events, enabled, created_at, updated_at, project_id, include_flags, '{}' FROM integrations;
+        DROP TABLE integrations;
+        ALTER TABLE integrations_new RENAME TO integrations;
+      `
+    },
+    {
+      version: 15,
+      sql: `ALTER TABLE executions ADD COLUMN screenshot_enabled INTEGER NOT NULL DEFAULT 1;`
+    },
+    {
       version: 3,
       sql: `
         -- Drop and recreate schedules with updated schema
@@ -356,74 +412,55 @@ function runMigrations(db: Database.Database): void {
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
       `
-    }
+    },
   ];
 
-  const v10: any = {
-    version: 10,
-    sql: `
-      CREATE TABLE IF NOT EXISTS audit_logs (
-        id TEXT PRIMARY KEY,
-        user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
-        action TEXT NOT NULL,
-        entity TEXT NOT NULL,
-        entity_id TEXT,
-        detail TEXT,
-        ip TEXT,
-        created_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-      CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON audit_logs(user_id);
-      CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
-      CREATE INDEX IF NOT EXISTS idx_audit_logs_entity ON audit_logs(entity);
-    `
-  };
-  migrations.push(v10);
-
-  const v11: any = {
-    version: 11,
-    sql: `ALTER TABLE executions ADD COLUMN schedule_id TEXT REFERENCES schedules(id) ON DELETE SET NULL;`
-  };
-  migrations.push(v11);
-
-  const v15: any = {
-    version: 15,
-    sql: `ALTER TABLE executions ADD COLUMN screenshot_enabled INTEGER NOT NULL DEFAULT 1;`
-  };
-  migrations.push(v15);
-
-  const v12: any = {
-    version: 12,
-    sql: `
-      ALTER TABLE integrations ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE CASCADE;
-      ALTER TABLE integrations ADD COLUMN include_flags TEXT NOT NULL DEFAULT '{}';
-    `
-  };
-  migrations.push(v12);
-
-  const v14: any = {
-    version: 14,
-    sql: `
-      CREATE TABLE IF NOT EXISTS integrations_new (
-        id TEXT PRIMARY KEY,
-        type TEXT NOT NULL CHECK(type IN ('discord','slack','teams','webhook','telegram','pagerduty','smtp')),
-        label TEXT NOT NULL,
-        webhook_url TEXT NOT NULL DEFAULT '',
-        events TEXT NOT NULL DEFAULT '["execution.failed"]',
-        enabled INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        project_id TEXT REFERENCES projects(id) ON DELETE CASCADE,
-        include_flags TEXT NOT NULL DEFAULT '{}',
-        smtp_config TEXT NOT NULL DEFAULT '{}'
-      );
-      INSERT INTO integrations_new SELECT id, type, label, webhook_url, events, enabled, created_at, updated_at, project_id, include_flags, '{}' FROM integrations;
-      DROP TABLE integrations;
-      ALTER TABLE integrations_new RENAME TO integrations;
-    `
-  };
-  migrations.push(v14);
-
   for (const migration of migrations.sort((a, b) => a.version - b.version)) {
+    if (!applied.includes(migration.version)) {
+      db.exec(migration.sql);
+      db.prepare('INSERT INTO migrations (version) VALUES (?)').run(migration.version);
+      console.log(`[DB] Migration v${migration.version} applied`);
+    }
+  }
+
+  const migrations_extra: { version: number; sql: string }[] = [
+    {
+      version: 16,
+      sql: `
+        CREATE TABLE IF NOT EXISTS user_api_tokens (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          token_hash TEXT NOT NULL UNIQUE,
+          token_prefix TEXT NOT NULL,
+          last_used_at TEXT,
+          expires_at TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_user_api_tokens_user_id ON user_api_tokens(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_api_tokens_token_hash ON user_api_tokens(token_hash);
+      `
+    },
+    {
+      version: 17,
+      sql: `
+        CREATE TABLE IF NOT EXISTS integration_deliveries (
+          id TEXT PRIMARY KEY,
+          integration_id TEXT NOT NULL REFERENCES integrations(id) ON DELETE CASCADE,
+          event TEXT NOT NULL,
+          payload TEXT NOT NULL DEFAULT '{}',
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','delivered','failed')),
+          status_code INTEGER,
+          error TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_integration_deliveries_integration_id ON integration_deliveries(integration_id);
+        CREATE INDEX IF NOT EXISTS idx_integration_deliveries_created_at ON integration_deliveries(created_at);
+      `
+    },
+  ];
+
+  for (const migration of migrations_extra.sort((a, b) => a.version - b.version)) {
     if (!applied.includes(migration.version)) {
       db.exec(migration.sql);
       db.prepare('INSERT INTO migrations (version) VALUES (?)').run(migration.version);
@@ -465,23 +502,28 @@ function runMigrations(db: Database.Database): void {
 function seedDefaultAdmin(db: Database.Database): void {
   const existing = db.prepare('SELECT id FROM users WHERE role = ?').get('admin');
   if (!existing) {
-    const bcrypt = require('bcryptjs');
-    const { v4: uuidv4 } = require('uuid');
-    const hash = bcrypt.hashSync('admin123', 10);
+    const email = process.env.ADMIN_EMAIL || 'admin@gostate.dev';
+    const password = process.env.ADMIN_PASSWORD || 'admin123';
+    const isDefault = !process.env.ADMIN_EMAIL || !process.env.ADMIN_PASSWORD;
+    const hash = bcrypt.hashSync(password, 10);
     db.prepare(`
       INSERT INTO users (id, email, password_hash, name, role)
       VALUES (?, ?, ?, ?, ?)
-    `).run(uuidv4(), 'admin@gostate.dev', hash, 'Administrador', 'admin');
-    console.log('[DB] Admin padrão criado: admin@gostate.dev / admin123');
+    `).run(uuidv4(), email, hash, 'Administrador', 'admin');
+    if (isDefault) {
+      console.warn(`[DB] WARNING: Admin criado com credenciais padrão (${email} / ${password}). Defina ADMIN_EMAIL e ADMIN_PASSWORD antes de ir para produção.`);
+    } else {
+      console.log(`[DB] Admin criado: ${email}`);
+    }
   }
 }
 
 function seedDefaultAgent(db: Database.Database): void {
   const existing = db.prepare("SELECT id FROM agents WHERE name = 'agente-local'").get();
   if (!existing) {
-    const { v4: uuidv4 } = require('uuid');
     const id = uuidv4();
-    const token = 'gostate-dev-agent-token-local';
+    const token = process.env.DEFAULT_AGENT_TOKEN || 'gostate-dev-agent-token-local';
+    const isDefault = !process.env.DEFAULT_AGENT_TOKEN;
     db.prepare(`
       INSERT INTO agents (id, name, token, capabilities)
       VALUES (?, ?, ?, ?)
@@ -491,6 +533,10 @@ function seedDefaultAgent(db: Database.Database): void {
       os: process.platform,
       max_concurrent: 1,
     }));
-    console.log('[DB] Agente padrão criado. Token: gostate-dev-agent-token-local');
+    if (isDefault) {
+      console.warn(`[DB] WARNING: Agente padrão criado com token estático "${token}". Defina DEFAULT_AGENT_TOKEN antes de ir para produção.`);
+    } else {
+      console.log(`[DB] Agente padrão criado com token configurado via env.`);
+    }
   }
 }

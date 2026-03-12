@@ -83,8 +83,16 @@ export const agentsApi = {
 };
 
 export const executionsApi = {
-  list: (params?: { status?: string; project_id?: string; test_case_id?: string; test_plan_id?: string; limit?: number }) =>
-    api.get('/api/executions', { params }),
+  list: (params?: {
+    project_id?: string;
+    status?: string;
+    test_case_id?: string;
+    test_plan_id?: string;
+    limit?: number;
+    offset?: number;
+    date_from?: string;
+    date_to?: string;
+  }) => api.get('/api/executions', { params }),
   create: (data: any) => api.post('/api/executions', data),
   get: (id: string) => api.get(`/api/executions/${id}`),
   getLogs: (id: string) => api.get(`/api/executions/${id}/logs`),
@@ -127,6 +135,12 @@ export const environmentsApi = {
   create: (projectId: string, data: any) => api.post(`/api/projects/${projectId}/environments`, data),
   update: (projectId: string, envId: string, data: any) => api.put(`/api/projects/${projectId}/environments/${envId}`, data),
   remove: (projectId: string, envId: string) => api.delete(`/api/projects/${projectId}/environments/${envId}`),
+};
+
+export const apiTokensApi = {
+  list: () => api.get('/api/me/tokens'),
+  create: (data: { name: string; expires_at?: string }) => api.post('/api/me/tokens', data),
+  remove: (id: string) => api.delete(`/api/me/tokens/${id}`),
 };
 
 export const testPlansApi = {

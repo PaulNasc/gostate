@@ -1,0 +1,76 @@
+services:
+
+  # ── Backend ──────────────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+      BACKEND_URL: ${BACKEND_URL:-http://localhost:4000}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@gostate.dev}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      DEFAULT_AGENT_TOKEN: ${DEFAULT_AGENT_TOKEN:-}
+    volumes:
+      - backend_data:/app/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── Frontend ─────────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${BACKEND_URL:-http://localhost:4000}
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ── Admin ────────────────────────────────────────────────────────────────────
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ${BACKEND_URL:-http://localhost:4000}
+    restart: unless-stopped
+    ports:
+      - "4001:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # ── Agent (opcional — pode escalar com múltiplos containers) ─────────────────
+  agent:
+    build:
+      context: ./agent
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      AGENT_TOKEN: ${DEFAULT_AGENT_TOKEN:?DEFAULT_AGENT_TOKEN is required for agent}
+      BACKEND_URL: ${BACKEND_URL:-http://backend:4000}
+      NODE_ENV: production
+      AGENT_MAX_CONCURRENT: ${AGENT_MAX_CONCURRENT:-3}
+      PLAYWRIGHT_BROWSERS_PATH: /root/.cache/ms-playwright
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  backend_data:

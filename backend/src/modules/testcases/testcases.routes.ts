@@ -3,10 +3,15 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import { getDb } from '../../db/schema';
-import { authenticate, AuthRequest } from '../../shared/middleware/auth';
+import { authenticate, requireProjectAccess, AuthRequest } from '../../shared/middleware/auth';
 
 const router = Router({ mergeParams: true });
 router.use(authenticate);
+router.use(requireProjectAccess('viewer', (req) => {
+  const db = getDb();
+  const suite = db.prepare('SELECT project_id FROM suites WHERE id = ?').get(req.params.suiteId) as any;
+  return suite?.project_id;
+}));
 
 const StepSchema = z.object({
   id: z.string().optional(),
