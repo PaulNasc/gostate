@@ -597,12 +597,12 @@ export default function IntegrationsPage() {
           {/* Include flags */}
           <div>
             <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>O que incluir na notificação</label>
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
               {INCLUDE_FLAGS_OPTIONS.map(opt => {
                 const Icon = opt.icon;
                 const active = form.include_flags[opt.key as keyof typeof EMPTY_FLAGS];
                 return (
-                  <label key={opt.key} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                  <label key={opt.key} className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all min-h-[72px] ${
                     active ? 'border-violet-500/40 bg-violet-500/8' : ''
                   }`} style={!active ? { borderColor: 'var(--border)', background: 'transparent' } : {}}>
                     <input
@@ -612,9 +612,9 @@ export default function IntegrationsPage() {
                       onChange={() => setForm(f => ({ ...f, include_flags: { ...f.include_flags, [opt.key]: !active } }))}
                     />
                     <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${active ? 'text-violet-400' : ''}`} style={!active ? { color: 'var(--text-muted)' } : {}} />
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>{opt.label}</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{opt.description}</p>
+                      <p className="text-[11px] leading-4 mt-0.5" style={{ color: 'var(--text-muted)' }}>{opt.description}</p>
                     </div>
                   </label>
                 );
@@ -995,18 +995,19 @@ export default function IntegrationsPage() {
                     </div>
                     <div>
                       <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Incluir na notificação</label>
-                      <div className="space-y-1.5">
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
                         {INCLUDE_FLAGS_OPTIONS.map(opt => {
                           const Icon = opt.icon;
                           const active = editForm.include_flags[opt.key];
                           return (
-                            <label key={opt.key} className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer transition-all ${active ? 'border-violet-500/40 bg-violet-500/8' : ''}`}
+                            <label key={opt.key} className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-all min-h-[58px] ${active ? 'border-violet-500/40 bg-violet-500/8' : ''}`}
                               style={!active ? { borderColor: 'var(--border)', background: 'transparent' } : {}}>
                               <input type="checkbox" className="mt-0.5 accent-violet-500" checked={active}
                                 onChange={() => setEditForm((f: any) => ({ ...f, include_flags: { ...f.include_flags, [opt.key]: !active } }))} />
                               <Icon className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${active ? 'text-violet-400' : ''}`} style={!active ? { color: 'var(--text-muted)' } : {}} />
-                              <div>
+                              <div className="min-w-0">
                                 <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>{opt.label}</p>
+                                <p className="text-[11px] leading-4 mt-0.5" style={{ color: 'var(--text-muted)' }}>{opt.description}</p>
                               </div>
                             </label>
                           );

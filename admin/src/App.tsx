@@ -42,18 +42,20 @@ function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-2.5 px-4 h-14 border-b" style={{ borderColor: '#1e2a3a' }}>
           <svg viewBox="0 0 64 64" width="28" height="28" className="flex-shrink-0" xmlns="http://www.w3.org/2000/svg">
             <defs>
-              <linearGradient id="adm-g" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#a5b4fc"/>
+              <linearGradient id="adm-g" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#c4b5fd"/>
                 <stop offset="100%" stopColor="#7c3aed"/>
               </linearGradient>
-              <linearGradient id="adm-c" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#a5b4fc"/>
+              <linearGradient id="adm-s" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#c4b5fd"/>
                 <stop offset="100%" stopColor="#7c3aed"/>
               </linearGradient>
             </defs>
-            <rect width="64" height="64" rx="13" fill="#0a0e2a"/>
-            <path d="M 14.97 48.97 A 24 24 0 1 1 49.03 48.97" fill="none" stroke="url(#adm-g)" strokeWidth="4.5" strokeLinecap="round"/>
-            <polyline points="19,32 27,41 45,22" fill="none" stroke="url(#adm-c)" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <rect width="64" height="64" rx="13" fill="#0b1120"/>
+            <rect x="13" y="13" width="38" height="38" rx="11" fill="none" stroke="url(#adm-g)" strokeWidth="3.5"/>
+            <rect x="20" y="22" width="24" height="5" rx="2.5" fill="url(#adm-s)" opacity="0.95"/>
+            <rect x="20" y="30" width="18" height="5" rx="2.5" fill="url(#adm-s)" opacity="0.78"/>
+            <rect x="20" y="38" width="12" height="5" rx="2.5" fill="url(#adm-s)" opacity="0.58"/>
           </svg>
           <div>
             <p className="text-sm leading-none text-white">go<span className="font-bold">State</span></p>
