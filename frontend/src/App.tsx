@@ -14,6 +14,7 @@ import ExecutionDetailPage from './pages/ExecutionDetailPage';
 import ScriptsPage from './pages/ScriptsPage';
 import TestCaseEditorPage from './pages/TestCaseEditorPage';
 import ReportsPage from './pages/ReportsPage';
+import TestCasesPage from './pages/TestCasesPage';
 import AgentsPage from './pages/AgentsPage';
 import TestPlansPage from './pages/TestPlansPage';
 import EnvironmentsPage from './pages/EnvironmentsPage';
@@ -43,6 +44,7 @@ function AppRoutes() {
         <Route path="scheduler" element={<SchedulerPage />} />
         <Route path="integrations" element={<IntegrationsPage />} />
         <Route path="scripts" element={<ScriptsPage />} />
+        <Route path="testcases" element={<TestCasesPage />} />
         <Route path="reports" element={<ReportsPage />} />
         <Route path="agents" element={<AgentsPage />} />
         <Route path="suites/:suiteId/testcases/:tcId/editor" element={<TestCaseEditorPage />} />

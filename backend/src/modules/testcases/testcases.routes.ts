@@ -28,10 +28,16 @@ const StepSchema = z.object({
   is_secret: z.boolean().optional(),
 });
 
+const CanvasSchema = z.object({
+  editorMode: z.literal('canvas'),
+  nodes: z.array(z.unknown()).default([]),
+  edges: z.array(z.unknown()).default([]),
+});
+
 const TestCaseSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().optional(),
-  steps: z.array(StepSchema).default([]),
+  steps: z.union([z.array(StepSchema), CanvasSchema]).default([]),
   tags: z.array(z.string()).default([]),
   priority: z.enum(['low', 'medium', 'high', 'critical']).default('medium'),
   status: z.enum(['active', 'draft', 'archived']).default('active'),
@@ -429,7 +435,7 @@ router.get('/:tcId/versions', (req: AuthRequest, res: Response) => {
   res.json({ versions: versions.map((v: any) => ({ ...v, steps: JSON.parse(v.steps) })) });
 });
 
-function saveVersion(db: any, tcId: string, version: number, steps: unknown[], comment: string, author: string) {
+function saveVersion(db: any, tcId: string, version: number, steps: any, comment: string, author: string) {
   db.prepare('INSERT INTO tc_versions (id, tc_id, version, steps, comment, author) VALUES (?, ?, ?, ?, ?, ?)')
     .run(uuidv4(), tcId, version, JSON.stringify(steps), comment, author);
 }

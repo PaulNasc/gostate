@@ -22,6 +22,7 @@ import projectMembersRoutes from './modules/projects/project-members.routes';
 import auditRoutes from './modules/audit/audit.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import apiTokensRoutes from './modules/api-tokens/api-tokens.routes';
+import globalTestcasesRoutes from './modules/testcases/global-testcases.routes';
 
 export function createApp() {
   const app = express();
@@ -80,6 +81,7 @@ export function createApp() {
   app.use('/api/projects', projectsRoutes);
   app.use('/api/projects/:projectId/suites', suitesRoutes);
   app.use('/api/suites/:suiteId/testcases', testcasesRoutes);
+  app.use('/api/testcases', globalTestcasesRoutes);
   app.use('/api/scripts', scriptsRoutes);
   app.use('/api/agents', agentsRoutes);
   app.use('/api/executions', executionsRoutes);

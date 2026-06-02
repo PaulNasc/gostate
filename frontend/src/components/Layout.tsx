@@ -123,13 +123,53 @@ function IconAudit({ active }: { active: boolean }) {
   );
 }
 
-const navItems = [
+function IconTestCases({ active }: { active: boolean }) {
+  const c = active ? '#e11d48' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="2" y="2" width="12" height="12" rx="1.5" stroke={c} strokeWidth="1.3" opacity={active ? 0.5 : 0.3} />
+      <path d="M5 5.5h6M5 8.5h6M5 11.5h4" stroke={c} strokeWidth="1.3" strokeLinecap="round" opacity={active ? 1 : 0.6} />
+    </svg>
+  );
+}
+
+function IconAutomation({ active }: { active: boolean }) {
+  const c = active ? '#e11d48' : 'currentColor';
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="2" y="2" width="5" height="5" rx="1" stroke={c} strokeWidth="1.3" opacity={active ? 0.8 : 0.5} />
+      <rect x="9" y="9" width="5" height="5" rx="1" stroke={c} strokeWidth="1.3" opacity={active ? 0.8 : 0.5} />
+      <path d="M4.5 7v3.5a1 1 0 001 1H9M11.5 9V5.5a1 1 0 00-1-1H7" stroke={c} strokeWidth="1.3" strokeLinecap="round" opacity={active ? 1 : 0.6} />
+    </svg>
+  );
+}
+
+interface NavItem {
+  to?: string;
+  Icon: React.ComponentType<{ active: boolean }>;
+  label: string;
+  adminOnly?: boolean;
+  submenu?: {
+    to: string;
+    Icon: React.ComponentType<{ active: boolean }>;
+    label: string;
+  }[];
+}
+
+const navItems: NavItem[] = [
   { to: '/dashboard',    Icon: IconDashboard,    label: 'Dashboard' },
   { to: '/projects',     Icon: IconProjects,     label: 'Projetos' },
   { to: '/executions',   Icon: IconExecutions,   label: 'Execuções' },
   { to: '/reports',      Icon: IconReports,      label: 'Relatórios' },
   { to: '/scheduler',    Icon: IconScheduler,    label: 'Agendamentos' },
-  { to: '/scripts',      Icon: IconScripts,      label: 'Scripts' },
+  {
+    label: 'Automação',
+    Icon: IconAutomation,
+    submenu: [
+      { to: '/testcases', Icon: IconTestCases, label: 'Casos de Teste' },
+      { to: '/scripts',   Icon: IconScripts,   label: 'Scripts' },
+    ]
+  },
   { to: '/integrations', Icon: IconIntegrations, label: 'Integrações' },
   { to: '/agents',       Icon: IconAgents,       label: 'Agentes' },
   { to: '/users',        Icon: IconUsers,        label: 'Usuários', adminOnly: true },
@@ -143,6 +183,16 @@ export default function Layout() {
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('gostate:theme') as 'dark' | 'light') || 'dark';
   });
+  const [automationOpen, setAutomationOpen] = useState(() => {
+    return localStorage.getItem('gostate:submenu:automation') !== 'false';
+  });
+
+  const toggleAutomation = () => {
+    setAutomationOpen(prev => {
+      localStorage.setItem('gostate:submenu:automation', String(!prev));
+      return !prev;
+    });
+  };
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -184,10 +234,91 @@ export default function Layout() {
         <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
           {navItems.map((item) => {
             if (item.adminOnly && user?.role !== 'admin') return null;
+
+            if (item.submenu) {
+              if (collapsed) {
+                return item.submenu.map((sub) => (
+                  <NavLink
+                    key={sub.to}
+                    to={sub.to}
+                    className={({ isActive }) =>
+                      cn(
+                        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group justify-center px-0',
+                        !isActive && 'hover:bg-black/5'
+                      )
+                    }
+                    style={({ isActive }) => isActive
+                      ? { background: 'var(--sidebar-active-bg)', color: 'var(--sidebar-active-text)', fontWeight: 500 }
+                      : { color: 'var(--text-muted)' }
+                    }
+                    title={sub.label}
+                  >
+                    {({ isActive }) => (
+                      <span className="flex-shrink-0"><sub.Icon active={isActive} /></span>
+                    )}
+                  </NavLink>
+                ));
+              }
+
+              const isAnySubActive = item.submenu.some(sub => window.location.pathname.startsWith(sub.to));
+              return (
+                <div key={item.label} className="space-y-0.5">
+                  <button
+                    onClick={toggleAutomation}
+                    className={cn(
+                      'w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group hover:bg-black/5',
+                      isAnySubActive && 'font-medium'
+                    )}
+                    style={{ color: isAnySubActive ? 'var(--text)' : 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', outline: 'none' }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex-shrink-0">
+                        <item.Icon active={isAnySubActive} />
+                      </span>
+                      <span>{item.label}</span>
+                    </div>
+                    <ChevronRight
+                      className={cn(
+                        'w-3.5 h-3.5 transition-transform duration-200',
+                        automationOpen && 'transform rotate-90'
+                      )}
+                    />
+                  </button>
+                  {automationOpen && (
+                    <div className="pl-6 space-y-0.5 border-l ml-5" style={{ borderColor: 'var(--border)' }}>
+                      {item.submenu.map((sub) => (
+                        <NavLink
+                          key={sub.to}
+                          to={sub.to}
+                          className={({ isActive }) =>
+                            cn(
+                              'flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs transition-all duration-150 group',
+                              !isActive && 'hover:bg-black/5'
+                            )
+                          }
+                          style={({ isActive }) => isActive
+                            ? { background: 'var(--sidebar-active-bg)', color: 'var(--sidebar-active-text)', fontWeight: 500 }
+                            : { color: 'var(--text-muted)' }
+                          }
+                        >
+                          {({ isActive }) => (
+                            <>
+                              <span className="flex-shrink-0"><sub.Icon active={isActive} /></span>
+                              <span>{sub.label}</span>
+                            </>
+                          )}
+                        </NavLink>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             return (
               <NavLink
                 key={item.to}
-                to={item.to}
+                to={item.to!}
                 className={({ isActive }) =>
                   cn(
                     'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group',

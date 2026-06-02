@@ -54,6 +54,7 @@ export const suitesApi = {
 
 export const testcasesApi = {
   list: (suiteId: string) => api.get(`/api/suites/${suiteId}/testcases`),
+  listGlobal: (params?: { projectId?: string; suiteId?: string; priority?: string; status?: string; type?: string; search?: string }) => api.get('/api/testcases', { params }),
   create: (suiteId: string, data: any) => api.post(`/api/suites/${suiteId}/testcases`, data),
   get: (suiteId: string, tcId: string) => api.get(`/api/suites/${suiteId}/testcases/${tcId}`),
   update: (suiteId: string, tcId: string, data: any) => api.put(`/api/suites/${suiteId}/testcases/${tcId}`, data),
