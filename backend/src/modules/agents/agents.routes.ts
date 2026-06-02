@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { getDb } from '../../db/schema';
 import { authenticate, requireRole, AuthRequest } from '../../shared/middleware/auth';
 import { getIo } from '../../realtime/gateway';
@@ -31,9 +32,12 @@ router.post('/', requireRole('admin'), (req: AuthRequest, res: Response) => {
   const { name, capabilities } = parse.data;
   const id = uuidv4();
   const token = uuidv4() + '-' + uuidv4();
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  const tokenPrefix = token.slice(0, 8);
   const db = getDb();
-  db.prepare('INSERT INTO agents (id, name, token, capabilities) VALUES (?, ?, ?, ?)').run(id, name, token, JSON.stringify(capabilities));
-  res.status(201).json({ agent: { id, name, token, capabilities, status: 'offline' } });
+  db.prepare('INSERT INTO agents (id, name, token_hash, token_prefix, capabilities) VALUES (?, ?, ?, ?, ?)').run(id, name, tokenHash, tokenPrefix, JSON.stringify(capabilities));
+  // Return token ONLY ONCE at creation — it cannot be retrieved later
+  res.status(201).json({ agent: { id, name, token, token_prefix: tokenPrefix, capabilities, status: 'offline' } });
 });
 
 router.get('/:id', (req: AuthRequest, res: Response) => {
@@ -45,9 +49,20 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
 
 router.get('/:id/token', requireRole('admin'), (req: AuthRequest, res: Response) => {
   const db = getDb();
-  const agent = db.prepare('SELECT id, name, token FROM agents WHERE id = ?').get(req.params.id) as any;
+  const agent = db.prepare('SELECT id, name, token_prefix FROM agents WHERE id = ?').get(req.params.id) as any;
   if (!agent) { res.status(404).json({ error: 'Agente não encontrado' }); return; }
-  res.json({ token: agent.token });
+  res.json({ token_prefix: agent.token_prefix, message: 'O token completo só é exibido na criação. Se perdido, regenere com POST /:id/regenerate-token.' });
+});
+
+router.post('/:id/regenerate-token', requireRole('admin'), (req: AuthRequest, res: Response) => {
+  const db = getDb();
+  const agent = db.prepare('SELECT id, name FROM agents WHERE id = ?').get(req.params.id) as any;
+  if (!agent) { res.status(404).json({ error: 'Agente não encontrado' }); return; }
+  const newToken = uuidv4() + '-' + uuidv4();
+  const newTokenHash = crypto.createHash('sha256').update(newToken).digest('hex');
+  const newTokenPrefix = newToken.slice(0, 8);
+  db.prepare('UPDATE agents SET token_hash = ?, token_prefix = ?, token = NULL WHERE id = ?').run(newTokenHash, newTokenPrefix, req.params.id);
+  res.json({ agent_id: agent.id, agent_name: agent.name, token: newToken, token_prefix: newTokenPrefix, warning: 'Salve este token agora — ele não poderá ser recuperado depois.' });
 });
 
 router.put('/:id', requireRole('admin'), (req: AuthRequest, res: Response) => {
@@ -91,7 +106,7 @@ router.put('/:id/deploy-config', requireRole('admin'), (req: AuthRequest, res: R
 
 router.get('/:id/install-command', requireRole('admin'), (req: AuthRequest, res: Response) => {
   const db = getDb();
-  const agent = db.prepare('SELECT id, name, token, deploy_config FROM agents WHERE id = ?').get(req.params.id) as any;
+  const agent = db.prepare('SELECT id, name, token_prefix, deploy_config FROM agents WHERE id = ?').get(req.params.id) as any;
   if (!agent) { res.status(404).json({ error: 'Agente não encontrado' }); return; }
 
   const cfg = parseJSON<Record<string, any>>(agent.deploy_config || '{}', {});
@@ -106,41 +121,49 @@ router.get('/:id/install-command', requireRole('admin'), (req: AuthRequest, res:
     cfg.extra_env.split('\n').map((l: string) => l.trim()).filter(Boolean).forEach((l: string) => extraEnvLines.push(l));
   }
 
-  // Linux/Mac bash (docker run)
+  // Linux/Mac bash (docker run — build from local Dockerfile)
   const extraDockerEnv = extraEnvLines.map((l: string) => ` \\\n  -e ${l}`).join('');
-  const dockerBash = `docker run -d \\
+  const dockerBash = `# Build da imagem (necessario apos alteracoes em agent/src/)
+docker build -t gostate-agent-${agentSlug} .
+
+# Subir o container (substitua SEU_AGENT_TOKEN pelo token salvo na criação)
+docker run -d \\
   --name agent-${agentSlug} \\
   --restart unless-stopped \\
   --add-host=host.docker.internal:host-gateway \\
-  -e AGENT_TOKEN=${agent.token} \\
+  -e AGENT_TOKEN=SEU_AGENT_TOKEN \\
   -e BACKEND_URL=${dockerBackendUrl} \\
-  -e NODE_ENV=${nodeEnv}${extraDockerEnv} \\
-  -v "$(pwd):/app" \\
-  -w /app \\
-  ${image} \\
-  sh -c "npm install && npm run dev"`;
+  -e NODE_ENV=${nodeEnv} \\
+  -e AGENT_MAX_CONCURRENT=3 \\
+  -e PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright${extraDockerEnv} \\
+  gostate-agent-${agentSlug}`;
 
-  // PowerShell (Windows)
+  // PowerShell (Windows — build from local Dockerfile)
   const extraPsEnv = extraEnvLines.map((l: string) => `  -e "${l}" \`\n`).join('');
-  const dockerPowershell = `docker run -d \`
+  const dockerPowershell = `# Build da imagem (necessario apos alteracoes em agent/src/)
+docker build -t gostate-agent-${agentSlug} .
+
+# Subir o container (substitua SEU_AGENT_TOKEN pelo token salvo na criação)
+docker run -d \`
   --name agent-${agentSlug} \`
   --restart unless-stopped \`
   --add-host=host.docker.internal:host-gateway \`
-  -e "AGENT_TOKEN=${agent.token}" \`
+  -e "AGENT_TOKEN=SEU_AGENT_TOKEN" \`
   -e "BACKEND_URL=${dockerBackendUrl}" \`
   -e "NODE_ENV=${nodeEnv}" \`
-${extraPsEnv}  -v "$PWD:/app" \`
-  -w /app \`
-  ${image} \`
-  sh -c "npm install && npm run dev"`;
+  -e "AGENT_MAX_CONCURRENT=3" \`
+  -e "PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright" \`
+${extraPsEnv}  gostate-agent-${agentSlug}`;
 
   // NPM local (PowerShell)
   const extraPsVars = extraEnvLines.map((l: string) => { const [k, v] = l.split('='); return `$env:${k}="${v || ''}"; `; }).join('');
-  const npmPowershell = `${extraPsVars}$env:AGENT_TOKEN="${agent.token}"; $env:BACKEND_URL="${backendUrl}"; $env:NODE_ENV="${nodeEnv}"; npm run dev`;
+  const npmPowershell = `${extraPsVars}$env:AGENT_TOKEN="SEU_AGENT_TOKEN"; $env:BACKEND_URL="${backendUrl}"; $env:NODE_ENV="${nodeEnv}"; npm run dev`;
 
   // NPM local (bash)
   const extraBashVars = extraEnvLines.map((l: string) => `${l} `).join('');
-  const npmBash = `${extraBashVars}AGENT_TOKEN=${agent.token} BACKEND_URL=${backendUrl} NODE_ENV=${nodeEnv} npm run dev`;
+  const npmBash = `${extraBashVars}AGENT_TOKEN=SEU_AGENT_TOKEN BACKEND_URL=${backendUrl} NODE_ENV=${nodeEnv} npm run dev`;
+
+  const maxConcurrent = cfg.max_concurrent || 3;
 
   // docker-compose.yml (uses Dockerfile in agent/ dir — no Windows node_modules conflict)
   const extraComposeEnv = extraEnvLines.map((l: string) => `      ${l}`).join('\n');
@@ -149,16 +172,27 @@ ${extraPsEnv}  -v "$PWD:/app" \`
     build: .
     restart: unless-stopped
     environment:
-      AGENT_TOKEN: ${agent.token}
+      AGENT_TOKEN: SEU_AGENT_TOKEN
       BACKEND_URL: ${dockerBackendUrl}
       NODE_ENV: ${nodeEnv}
+      AGENT_MAX_CONCURRENT: ${maxConcurrent}
+      PLAYWRIGHT_BROWSERS_PATH: /root/.cache/ms-playwright
 ${extraComposeEnv ? extraComposeEnv + '\n' : ''}    extra_hosts:
-      - "host.docker.internal:host-gateway"`;
+      - "host.docker.internal:host-gateway"
+
+# Comandos:
+#   1a vez ou apos alterar agent/src/:
+#     docker-compose up -d --build agent
+#   Apenas reiniciar (sem rebuild):
+#     docker-compose up -d agent
+#   Ver logs:
+#     docker-compose logs -f agent`;
 
   res.json({
     agent_id: agent.id,
     agent_name: agent.name,
-    token: agent.token,
+    token_prefix: agent.token_prefix,
+    token_warning: 'O token completo não é armazenado. Use o token salvo na criação ou regenere com POST /:id/regenerate-token.',
     backend_url: backendUrl,
     commands: {
       docker_bash: dockerBash,
@@ -167,7 +201,7 @@ ${extraComposeEnv ? extraComposeEnv + '\n' : ''}    extra_hosts:
       npm_bash: npmBash,
       docker_compose: dockerComposeYml,
     },
-    env_vars: { AGENT_TOKEN: agent.token, BACKEND_URL: backendUrl, NODE_ENV: nodeEnv },
+    env_vars: { AGENT_TOKEN: 'SEU_AGENT_TOKEN (salvo na criação)', BACKEND_URL: backendUrl, NODE_ENV: nodeEnv },
   });
 });
 

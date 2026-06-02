@@ -3,16 +3,16 @@ import { useId } from 'react';
 interface GoStateIconProps {
   size?: number;
   className?: string;
-  /** 'fire' (default, frontend) | 'violet' (admin) */
-  variant?: 'fire' | 'violet';
+  /** 'fire' (default, frontend) | 'cyan' (admin) */
+  variant?: 'fire' | 'cyan';
 }
 
 export default function GoStateIcon({ size = 32, className = '', variant = 'fire' }: GoStateIconProps) {
   const uid = useId().replace(/:/g, '');
-  const isViolet = variant === 'violet';
+  const isViolet = variant === 'cyan';
 
   const g0 = isViolet ? '#c4b5fd' : '#67e8f9';
-  const g1 = isViolet ? '#7c3aed' : '#2563eb';
+  const g1 = isViolet ? '#0891b2' : '#2563eb';
   const bg = '#0b1120';
 
   return (

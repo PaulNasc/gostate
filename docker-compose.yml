@@ -32,7 +32,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE: ${BACKEND_URL:-http://localhost:4000}
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:4000}
     restart: unless-stopped
     ports:
       - "5173:80"
@@ -46,7 +46,7 @@ services:
       context: ./admin
       dockerfile: Dockerfile
       args:
-        VITE_API_BASE: ${BACKEND_URL:-http://localhost:4000}
+        VITE_API_BASE: ${VITE_API_BASE:-http://localhost:4000}
     restart: unless-stopped
     ports:
       - "4001:80"
@@ -60,12 +60,15 @@ services:
       context: ./agent
       dockerfile: Dockerfile
     restart: unless-stopped
+    shm_size: '2gb'
     environment:
       AGENT_TOKEN: ${DEFAULT_AGENT_TOKEN:?DEFAULT_AGENT_TOKEN is required for agent}
-      BACKEND_URL: ${BACKEND_URL:-http://backend:4000}
+      BACKEND_URL: ${INTERNAL_BACKEND_URL:-http://backend:4000}
       NODE_ENV: production
       AGENT_MAX_CONCURRENT: ${AGENT_MAX_CONCURRENT:-3}
       PLAYWRIGHT_BROWSERS_PATH: /root/.cache/ms-playwright
+      TZ: ${TZ:-America/Sao_Paulo}
+      LANG: C.UTF-8
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:

@@ -19,7 +19,7 @@ const ACTION_COLORS: Record<string, string> = {
   update: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
   delete: 'text-red-400 bg-red-500/10 border-red-500/20',
   cancel: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
-  login:  'text-purple-400 bg-purple-500/10 border-purple-500/20',
+  login:  'text-teal-400 bg-teal-500/10 border-teal-500/20',
 };
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -80,7 +80,7 @@ export default function LogsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <ScrollText className="w-5 h-5 text-violet-400" />
+          <ScrollText className="w-5 h-5 text-cyan-400" />
           <div>
             <h1 className="text-xl font-bold text-white">Logs</h1>
             <p className="text-sm text-slate-400 mt-0.5">
@@ -257,7 +257,7 @@ export default function LogsPage() {
                     key={i}
                     className="text-xs w-7 h-7 rounded-lg transition-colors font-medium"
                     style={p === page
-                      ? { background: 'rgba(124,58,237,0.25)', color: '#a78bfa' }
+                      ? { background: 'rgba(124,58,237,0.25)', color: '#22d3ee' }
                       : { color: '#94a3b8' }
                     }
                     onMouseEnter={e => { if (p !== page) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}

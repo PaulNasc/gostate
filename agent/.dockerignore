@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.env
+.env.*
+*.log
+test-results
+html-report
+.local-browsers
+.vscode
+.idea
+*.tsbuildinfo
+logs

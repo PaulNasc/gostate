@@ -97,15 +97,84 @@ function startExecutionWatchdog() {
 
   console.log('[goState Backend] Watchdog de execuções ativado (intervalo: 2min, timeout: 10min)');
 }
+function startDataCleanupTask() {
+  const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
+  
+  const runCleanup = () => {
+    try {
+      const db = getDb();
+      // Clear heavy columns (logs/result) for executions older than 30 days
+      const resExec = db.prepare(`
+        UPDATE executions SET logs = NULL, result = NULL 
+        WHERE (julianday('now') - julianday(created_at)) > 30 
+        AND (logs IS NOT NULL OR result IS NOT NULL)
+      `).run();
+      
+      // Delete old audit logs (> 60 days)
+      const resAudit = db.prepare(`
+        DELETE FROM audit_logs 
+        WHERE (julianday('now') - julianday(created_at)) > 60
+      `).run();
+      
+      console.log(`[DataCleanup] Limpeza executada: ${resExec.changes} execuções antigas limpas, ${resAudit.changes} logs deletados.`);
+    } catch (err) {
+      console.error('[DataCleanup] Erro:', err);
+    }
+  };
+
+  setInterval(runCleanup, CLEANUP_INTERVAL_MS);
+  setTimeout(runCleanup, 10000); // Run on startup
+  console.log('[goState Backend] Data Cleanup ativado (30d execuções, 60d audit)');
+}
 
 server.listen(PORT, () => {
   console.log(`[goState Backend] Rodando em http://localhost:${PORT}`);
   console.log(`[goState Backend] Health: http://localhost:${PORT}/api/health`);
   startAgentHeartbeatSweep();
   startExecutionWatchdog();
+  startDataCleanupTask();
 });
 
 server.on('error', (err) => {
   console.error('[goState Backend] Erro fatal:', err);
   process.exit(1);
 });
+
+// Graceful shutdown
+function gracefulShutdown(signal: string) {
+  console.log(`\n[goState Backend] ${signal} recebido — encerrando gracefully...`);
+
+  // Mark all agents as offline
+  try {
+    const db = getDb();
+    db.prepare("UPDATE agents SET status = 'offline'").run();
+  } catch {}
+
+  // Close Socket.IO
+  try {
+    const io = getIo();
+    io.close();
+  } catch {}
+
+  // Close HTTP server
+  server.close(() => {
+    console.log('[goState Backend] Servidor HTTP encerrado');
+
+    // Close DB
+    try {
+      const db = getDb();
+      db.close();
+    } catch {}
+
+    process.exit(0);
+  });
+
+  // Force exit after 10s if graceful close hangs
+  setTimeout(() => {
+    console.error('[goState Backend] Forçando encerramento após timeout');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

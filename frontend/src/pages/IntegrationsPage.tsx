@@ -122,7 +122,7 @@ const TYPES = [
   },
   {
     value: 'datadog', label: 'Datadog',
-    color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20',
+    color: 'text-teal-400', bg: 'bg-teal-500/10 border-teal-500/20',
     urlPlaceholder: 'https://api.datadoghq.com/api/v1/events',
     docUrl: 'https://docs.datadoghq.com/api/latest/events/',
     steps: [
@@ -146,7 +146,7 @@ const TYPES = [
   },
   {
     value: 'linear', label: 'Linear',
-    color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20',
+    color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20',
     urlPlaceholder: '',
     docUrl: 'https://linear.app/docs/webhooks',
     steps: [
@@ -193,7 +193,7 @@ const EVENT_GROUPS = [
       { value: 'execution.error',    label: 'Erro',           icon: AlertCircle,  activeBg: 'bg-amber-500/15 border-amber-500/40 text-amber-600 dark:text-amber-400' },
       { value: 'execution.started',  label: 'Iniciada',       icon: Play,         activeBg: 'bg-blue-500/15 border-blue-500/40 text-blue-600 dark:text-blue-400' },
       { value: 'execution.queued',   label: 'Na fila',        icon: Zap,          activeBg: 'bg-slate-500/15 border-slate-500/40 text-slate-400' },
-      { value: 'execution.retried',  label: 'Retry',          icon: Play,         activeBg: 'bg-violet-500/15 border-violet-500/40 text-violet-400' },
+      { value: 'execution.retried',  label: 'Retry',          icon: Play,         activeBg: 'bg-cyan-500/15 border-cyan-500/40 text-cyan-400' },
       { value: 'execution.flaky',    label: 'Flaky',          icon: AlertCircle,  activeBg: 'bg-yellow-500/15 border-yellow-500/40 text-yellow-500' },
     ],
   },
@@ -603,15 +603,15 @@ export default function IntegrationsPage() {
                 const active = form.include_flags[opt.key as keyof typeof EMPTY_FLAGS];
                 return (
                   <label key={opt.key} className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all min-h-[72px] ${
-                    active ? 'border-violet-500/40 bg-violet-500/8' : ''
+                    active ? 'border-cyan-500/40 bg-cyan-500/8' : ''
                   }`} style={!active ? { borderColor: 'var(--border)', background: 'transparent' } : {}}>
                     <input
                       type="checkbox"
-                      className="mt-0.5 accent-violet-500"
+                      className="mt-0.5 accent-cyan-500"
                       checked={active}
                       onChange={() => setForm(f => ({ ...f, include_flags: { ...f.include_flags, [opt.key]: !active } }))}
                     />
-                    <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${active ? 'text-violet-400' : ''}`} style={!active ? { color: 'var(--text-muted)' } : {}} />
+                    <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${active ? 'text-cyan-400' : ''}`} style={!active ? { color: 'var(--text-muted)' } : {}} />
                     <div className="min-w-0">
                       <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>{opt.label}</p>
                       <p className="text-[11px] leading-4 mt-0.5" style={{ color: 'var(--text-muted)' }}>{opt.description}</p>
@@ -687,7 +687,6 @@ export default function IntegrationsPage() {
             .flip-card { perspective: 1000px; }
             .flip-card-inner { position: relative; width: 100%; height: 100%; transition: transform 0.55s cubic-bezier(.4,0,.2,1); transform-style: preserve-3d; }
             .flip-card:hover .flip-card-inner { transform: rotateY(180deg); }
-            .flip-card.is-editing .flip-card-inner { transform: rotateY(180deg); }
             .flip-card-front, .flip-card-back { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 0.75rem; }
             .flip-card-back { transform: rotateY(180deg); }
           `}</style>
@@ -698,7 +697,6 @@ export default function IntegrationsPage() {
               const flags = intg.include_flags || {};
               const activeFlags = INCLUDE_FLAGS_OPTIONS.filter(o => flags[o.key]);
               const intgProject = projects.find((p: any) => p.id === intg.project_id);
-              const isEditing = editingId === intg.id;
 
               const typeGradient: Record<string, string> = {
                 discord: 'from-indigo-600/30 to-indigo-900/60',
@@ -708,9 +706,9 @@ export default function IntegrationsPage() {
                 telegram: 'from-sky-600/30 to-sky-900/60',
                 pagerduty: 'from-emerald-600/30 to-emerald-900/60',
                 opsgenie: 'from-orange-400/20 to-orange-900/50',
-                datadog: 'from-purple-600/30 to-purple-900/60',
+                datadog: 'from-teal-600/30 to-teal-900/60',
                 grafana: 'from-orange-600/30 to-orange-900/60',
-                linear: 'from-violet-600/30 to-violet-900/60',
+                linear: 'from-cyan-600/30 to-cyan-900/60',
                 webhook: 'from-slate-600/30 to-slate-900/60',
                 smtp: 'from-orange-600/30 to-orange-900/60',
                 jira: 'from-blue-700/30 to-blue-950/60',
@@ -726,7 +724,7 @@ export default function IntegrationsPage() {
                 opsgenie: '#fb923c50',
                 datadog: '#a855f750',
                 grafana: '#f9731650',
-                linear: '#8b5cf650',
+                linear: '#06b6d450',
                 webhook: '#64748b50',
                 smtp: '#f9731650',
                 jira: '#2563eb50',
@@ -752,9 +750,9 @@ export default function IntegrationsPage() {
               const CARD_HEIGHT = '200px';
 
               return (
-                <div key={intg.id} className="space-y-2">
+                <div key={intg.id}>
                 <div
-                  className={`flip-card ${isEditing ? 'is-editing' : ''}`}
+                  className="flip-card"
                   style={{ height: CARD_HEIGHT, minHeight: CARD_HEIGHT }}
                 >
                   <div className="flip-card-inner" style={{ height: CARD_HEIGHT, minHeight: CARD_HEIGHT }}>
@@ -807,7 +805,7 @@ export default function IntegrationsPage() {
                               <span className="text-xs font-bold truncate" style={{ color: 'var(--text)' }}>{intg.label}</span>
                             </div>
                             <div className="flex items-center gap-0.5 flex-shrink-0">
-                              <button className="p-1.5 rounded hover:bg-violet-500/10 transition-colors" style={{ color: 'var(--text-muted)' }} title="Editar" onClick={() => startEdit(intg)}>
+                              <button className="p-1.5 rounded hover:bg-cyan-500/10 transition-colors" style={{ color: 'var(--text-muted)' }} title="Editar" onClick={() => startEdit(intg)}>
                                 <Pencil className="w-3.5 h-3.5" />
                               </button>
                               <button className="p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 transition-colors" style={{ color: 'var(--text-muted)' }} onClick={() => { if (confirm('Remover integração?')) remove.mutate(intg.id); }}>
@@ -833,7 +831,7 @@ export default function IntegrationsPage() {
                             {activeFlags.map(f => {
                               const Icon = f.icon;
                               return (
-                                <span key={f.key} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border text-violet-400 bg-violet-500/10 border-violet-500/20">
+                                <span key={f.key} className="flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border text-cyan-400 bg-cyan-500/10 border-cyan-500/20">
                                   <Icon className="w-3 h-3" />{f.label}
                                 </span>
                               );
@@ -874,161 +872,190 @@ export default function IntegrationsPage() {
                   </div>
                 </div>
 
-                {/* ── EDIT PANEL (fora do flip, expande abaixo) ── */}
-                {isEditing && editForm && (
-                  <div className="card p-4 space-y-3" style={{ border: `1px solid ${typeBorderColor[intg.type] || '#64748b50'}` }}>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-xs px-2 py-0.5 rounded-full border font-semibold ${info.bg} ${info.color}`}>{info.label}</span>
-                        <span className="text-xs font-semibold" style={{ color: 'var(--text)' }}>Editar: {intg.label}</span>
-                      </div>
-                      <button className="p-1 rounded hover:bg-white/10 transition-colors" style={{ color: 'var(--text-muted)' }} onClick={() => setEditingId(null)}>
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Rótulo</label>
-                        <input className="input text-xs" value={editForm.label} onChange={e => setEditForm((f: any) => ({ ...f, label: e.target.value }))} />
-                      </div>
-                      {intg.type !== 'smtp' && (
-                        <div>
-                          <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Webhook URL</label>
-                          <input className="input text-xs" value={editForm.webhook_url} onChange={e => setEditForm((f: any) => ({ ...f, webhook_url: e.target.value }))} />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* SMTP fields no edit panel */}
-                    {intg.type === 'smtp' && editForm.smtp_config && (
-                      <div className="rounded border p-3 space-y-2" style={{ borderColor: 'rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.04)' }}>
-                        <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: '#fb923c' }}>
-                          <Mail className="w-3.5 h-3.5" /> Configuração SMTP
-                        </p>
-                        <div className="grid grid-cols-3 gap-2">
-                          <div className="col-span-2">
-                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Host</label>
-                            <input className="input text-xs" placeholder="smtp.gmail.com" value={editForm.smtp_config.host || ''}
-                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, host: e.target.value } }))} />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Porta</label>
-                            <input className="input text-xs" type="number" value={editForm.smtp_config.port || 587}
-                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, port: Number(e.target.value) } }))} />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Usuário</label>
-                            <input className="input text-xs" value={editForm.smtp_config.user || ''}
-                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, user: e.target.value } }))} />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Senha</label>
-                            <div className="relative">
-                              <input className="input text-xs pr-8" type={showEditSmtpPass ? 'text' : 'password'} value={editForm.smtp_config.pass || ''}
-                                onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, pass: e.target.value } }))} />
-                              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}
-                                onClick={() => setShowEditSmtpPass(v => !v)}>
-                                {showEditSmtpPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Remetente (from)</label>
-                            <input className="input text-xs" value={editForm.smtp_config.from || ''}
-                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, from: e.target.value } }))} />
-                          </div>
-                          <div>
-                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Destinatário(s) (to)</label>
-                            <input className="input text-xs" value={editForm.smtp_config.to || ''}
-                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, to: e.target.value } }))} />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Prefixo do assunto</label>
-                            <input className="input text-xs" value={editForm.smtp_config.subject_prefix || '[goState]'}
-                              onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, subject_prefix: e.target.value } }))} />
-                          </div>
-                          <div className="flex items-end pb-1">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                              <input type="checkbox" className="accent-orange-500" checked={!!editForm.smtp_config.secure}
-                                onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, secure: e.target.checked } }))} />
-                              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>SSL (porta 465)</span>
-                            </label>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    <div>
-                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Projeto</label>
-                      <select className="input text-xs" value={editForm.project_id || ''} onChange={e => setEditForm((f: any) => ({ ...f, project_id: e.target.value || null }))}>
-                        <option value="">Global</option>
-                        {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Eventos</label>
-                      <div className="space-y-2">
-                        {EVENT_GROUPS.map(group => (
-                          <div key={group.group}>
-                            <p className="text-xs mb-1" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>{group.group}</p>
-                            <div className="flex flex-wrap gap-1">
-                              {group.events.map(ev => {
-                                const Icon = ev.icon;
-                                const active = editForm.events.includes(ev.value);
-                                return (
-                                  <button key={ev.value} type="button" onClick={() => toggleEditEvent(ev.value)}
-                                    className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg border font-medium transition-all ${active ? ev.activeBg : ''}`}
-                                    style={!active ? { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'transparent' } : {}}>
-                                    <Icon className="w-3 h-3" />{ev.label}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Incluir na notificação</label>
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-                        {INCLUDE_FLAGS_OPTIONS.map(opt => {
-                          const Icon = opt.icon;
-                          const active = editForm.include_flags[opt.key];
-                          return (
-                            <label key={opt.key} className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-all min-h-[58px] ${active ? 'border-violet-500/40 bg-violet-500/8' : ''}`}
-                              style={!active ? { borderColor: 'var(--border)', background: 'transparent' } : {}}>
-                              <input type="checkbox" className="mt-0.5 accent-violet-500" checked={active}
-                                onChange={() => setEditForm((f: any) => ({ ...f, include_flags: { ...f.include_flags, [opt.key]: !active } }))} />
-                              <Icon className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${active ? 'text-violet-400' : ''}`} style={!active ? { color: 'var(--text-muted)' } : {}} />
-                              <div className="min-w-0">
-                                <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>{opt.label}</p>
-                                <p className="text-[11px] leading-4 mt-0.5" style={{ color: 'var(--text-muted)' }}>{opt.description}</p>
-                              </div>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 pt-1">
-                      <button className="btn-primary text-xs py-1 px-3 flex items-center gap-1.5" disabled={update.isPending}
-                        onClick={() => update.mutate({ id: intg.id, data: { ...editForm, project_id: editForm.project_id || null } })}>
-                        {update.isPending && <Loader2 className="w-3 h-3 animate-spin" />} Salvar
-                      </button>
-                      <button className="btn-ghost text-xs py-1 px-3" onClick={() => setEditingId(null)}>Cancelar</button>
-                    </div>
-                  </div>
-                )}
                 </div>
               );
             })}
           </div>
         </>
       )}
+
+      {/* ── EDIT MODAL ── */}
+      {editingId && editForm && (() => {
+        const editIntg = integrations.find(i => i.id === editingId);
+        if (!editIntg) return null;
+        const editInfo = typeInfo(editIntg.type);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+            onClick={(e) => { if (e.target === e.currentTarget) setEditingId(null); }}>
+            <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl p-6 space-y-4"
+              style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }}>
+              {/* Modal header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs px-2.5 py-0.5 rounded-full border font-semibold ${editInfo.bg} ${editInfo.color}`}>{editInfo.label}</span>
+                  <span className="text-sm font-bold" style={{ color: 'var(--text)' }}>Editar: {editIntg.label}</span>
+                </div>
+                <button className="p-1.5 rounded hover:bg-white/10 transition-colors" style={{ color: 'var(--text-muted)' }} onClick={() => setEditingId(null)}>
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Label + Webhook URL */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Rótulo</label>
+                  <input className="input text-sm" value={editForm.label} onChange={e => setEditForm((f: any) => ({ ...f, label: e.target.value }))} />
+                </div>
+                {editIntg.type !== 'smtp' && (
+                  <div>
+                    <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Webhook URL</label>
+                    <input className="input text-sm" value={editForm.webhook_url} onChange={e => setEditForm((f: any) => ({ ...f, webhook_url: e.target.value }))} />
+                  </div>
+                )}
+              </div>
+
+              {/* SMTP fields */}
+              {editIntg.type === 'smtp' && editForm.smtp_config && (
+                <div className="rounded-lg border p-4 space-y-3" style={{ borderColor: 'rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.04)' }}>
+                  <p className="text-xs font-semibold flex items-center gap-1.5" style={{ color: '#fb923c' }}>
+                    <Mail className="w-3.5 h-3.5" /> Configuração SMTP
+                  </p>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Host</label>
+                      <input className="input text-xs" placeholder="smtp.gmail.com" value={editForm.smtp_config.host || ''}
+                        onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, host: e.target.value } }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Porta</label>
+                      <input className="input text-xs" type="number" value={editForm.smtp_config.port || 587}
+                        onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, port: Number(e.target.value) } }))} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Usuário</label>
+                      <input className="input text-xs" value={editForm.smtp_config.user || ''}
+                        onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, user: e.target.value } }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Senha</label>
+                      <div className="relative">
+                        <input className="input text-xs pr-8" type={showEditSmtpPass ? 'text' : 'password'} value={editForm.smtp_config.pass || ''}
+                          onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, pass: e.target.value } }))} />
+                        <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }}
+                          onClick={() => setShowEditSmtpPass(v => !v)}>
+                          {showEditSmtpPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Remetente (from)</label>
+                      <input className="input text-xs" value={editForm.smtp_config.from || ''}
+                        onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, from: e.target.value } }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Destinatário(s) (to)</label>
+                      <input className="input text-xs" value={editForm.smtp_config.to || ''}
+                        onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, to: e.target.value } }))} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium mb-1" style={{ color: 'var(--text-muted)' }}>Prefixo do assunto</label>
+                      <input className="input text-xs" value={editForm.smtp_config.subject_prefix || '[goState]'}
+                        onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, subject_prefix: e.target.value } }))} />
+                    </div>
+                    <div className="flex items-end pb-1">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" className="accent-orange-500" checked={!!editForm.smtp_config.secure}
+                          onChange={e => setEditForm((f: any) => ({ ...f, smtp_config: { ...f.smtp_config, secure: e.target.checked } }))} />
+                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>SSL (porta 465)</span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Project scope */}
+              <div>
+                <label className="block text-xs font-medium mb-1 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                  <FolderOpen className="w-3 h-3" /> Projeto
+                </label>
+                <select className="input text-sm" value={editForm.project_id || ''} onChange={e => setEditForm((f: any) => ({ ...f, project_id: e.target.value || null }))}>
+                  <option value="">Global</option>
+                  {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+
+              {/* Events */}
+              <div>
+                <label className="block text-xs font-medium mb-2 flex items-center gap-1.5" style={{ color: 'var(--text-muted)' }}>
+                  <Bell className="w-3 h-3" /> Eventos a notificar
+                </label>
+                <div className="space-y-3">
+                  {EVENT_GROUPS.map(group => (
+                    <div key={group.group}>
+                      <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)', opacity: 0.7 }}>{group.group}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {group.events.map(ev => {
+                          const Icon = ev.icon;
+                          const active = editForm.events.includes(ev.value);
+                          return (
+                            <button key={ev.value} type="button" onClick={() => toggleEditEvent(ev.value)}
+                              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${active ? ev.activeBg : ''}`}
+                              style={!active ? { color: 'var(--text-muted)', borderColor: 'var(--border)', background: 'transparent' } : {}}>
+                              <Icon className={`w-3.5 h-3.5 ${active ? '' : 'opacity-50'}`} />{ev.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {editForm.events.length === 0 && (
+                  <p className="text-xs text-amber-500 mt-1.5">Selecione pelo menos um evento.</p>
+                )}
+              </div>
+
+              {/* Include flags */}
+              <div>
+                <label className="block text-xs font-medium mb-2" style={{ color: 'var(--text-muted)' }}>Incluir na notificação</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {INCLUDE_FLAGS_OPTIONS.map(opt => {
+                    const Icon = opt.icon;
+                    const active = editForm.include_flags[opt.key as keyof typeof EMPTY_FLAGS];
+                    return (
+                      <label key={opt.key} className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-all min-h-[68px] ${
+                        active ? 'border-cyan-500/40 bg-cyan-500/8' : ''
+                      }`} style={!active ? { borderColor: 'var(--border)', background: 'transparent' } : {}}>
+                        <input type="checkbox" className="mt-0.5 accent-cyan-500" checked={!!active}
+                          onChange={() => setEditForm((f: any) => ({ ...f, include_flags: { ...f.include_flags, [opt.key]: !active } }))} />
+                        <Icon className={`w-4 h-4 mt-0.5 flex-shrink-0 ${active ? 'text-cyan-400' : ''}`} style={!active ? { color: 'var(--text-muted)' } : {}} />
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium" style={{ color: 'var(--text)' }}>{opt.label}</p>
+                          <p className="text-[11px] leading-4 mt-0.5" style={{ color: 'var(--text-muted)' }}>{opt.description}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-2 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                <button className="btn-primary flex items-center gap-2" disabled={update.isPending || !editForm.label || editForm.events.length === 0}
+                  onClick={() => update.mutate({ id: editIntg.id, data: { ...editForm, project_id: editForm.project_id || null, smtp_config: editIntg.type === 'smtp' ? editForm.smtp_config : undefined } })}>
+                  {update.isPending && <Loader2 className="w-3 h-3 animate-spin" />} Salvar
+                </button>
+                <button className="btn-ghost" onClick={() => setEditingId(null)}>Cancelar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

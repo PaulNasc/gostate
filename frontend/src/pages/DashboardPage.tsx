@@ -1,22 +1,35 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { statsApi, executionsApi, API_BASE } from '../lib/api';
 import { formatDate, formatDuration, statusBadgeClass, statusLabel } from '../lib/utils';
-import { FolderOpen, PlayCircle, Server, TrendingUp, TestTube2, Layers, Loader2, ArrowRight, Zap, Timer } from 'lucide-react';
+import { FolderOpen, PlayCircle, Server, TrendingUp, TestTube2, Layers, Loader2, ArrowRight, Zap, Timer, CalendarRange } from 'lucide-react';
 import { io as socketIo } from 'socket.io-client';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, Legend,
 } from 'recharts';
 
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
 
+  const defaultRange = useMemo(() => {
+    return { from: '', to: '' };
+  }, []);
+
+  const [dateRange, setDateRange] = useState(defaultRange);
+
   const { data, isLoading } = useQuery({
-    queryKey: ['stats'],
-    queryFn: () => statsApi.get(),
+    queryKey: ['stats', dateRange.from, dateRange.to],
+    queryFn: () => statsApi.get({ date_from: dateRange.from, date_to: dateRange.to }),
     refetchInterval: 30000,
   });
 
@@ -46,6 +59,9 @@ export default function DashboardPage() {
   const avgByProject: any[] = s?.avg_by_project ?? [];
 
   const passRate = s?.executions?.pass_rate ?? 0;
+  const chartLabel = dateRange.from === defaultRange.from && dateRange.to === defaultRange.to
+    ? 'últimos 7 dias'
+    : `${dateRange.from.slice(5).split('-').reverse().join('/')} - ${dateRange.to.slice(5).split('-').reverse().join('/')}`;
   const chartData = (s?.last7days ?? []).map((d: any) => ({
     day: d.day?.slice(5) ?? '',
     Passou: d.passed ?? 0,
@@ -63,6 +79,7 @@ export default function DashboardPage() {
   const barData = allBarData.filter(d => d.value > 0);
 
   const tooltipStyle = { background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, color: 'var(--text)' };
+  const hasInsightsSection = avgByProject.length > 0 || flakyTcs.length > 0;
 
   return (
     <div className="p-6 space-y-6 overflow-hidden">
@@ -93,7 +110,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         <StatCard icon={FolderOpen} label="Projetos" value={s?.projects ?? '—'} color="blue" onClick={() => navigate('/projects')} />
         <StatCard icon={Layers} label="Suites" value={s?.suites ?? '—'} color="indigo" />
-        <StatCard icon={TestTube2} label="Casos de Teste" value={s?.test_cases ?? '—'} color="purple" />
+        <StatCard icon={TestTube2} label="Casos de Teste" value={s?.test_cases ?? '—'} color="teal" />
         <StatCard icon={PlayCircle} label="Execuções" value={s?.executions?.total ?? '—'} color="cyan" onClick={() => navigate('/executions')} />
         <StatCard
           icon={TrendingUp}
@@ -113,7 +130,32 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* 7-day Line Chart */}
         <div className="card p-4 lg:col-span-2">
-          <h2 className="text-sm font-semibold mb-4" style={{ color: 'var(--text)' }}>Execuções — últimos 7 dias</h2>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Execuções</h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{chartLabel}</p>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-lg border px-2 py-1.5 flex-wrap" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
+              <CalendarRange className="w-3.5 h-3.5 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+              <input
+                type="date"
+                className="bg-transparent text-xs outline-none min-w-[118px]"
+                style={{ color: 'var(--text)' }}
+                value={dateRange.from}
+                max={dateRange.to}
+                onChange={(e) => setDateRange((curr) => ({ ...curr, from: e.target.value || curr.from }))}
+              />
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>até</span>
+              <input
+                type="date"
+                className="bg-transparent text-xs outline-none min-w-[118px]"
+                style={{ color: 'var(--text)' }}
+                value={dateRange.to}
+                min={dateRange.from}
+                onChange={(e) => setDateRange((curr) => ({ ...curr, to: e.target.value || curr.to }))}
+              />
+            </div>
+          </div>
           {chartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -128,7 +170,7 @@ export default function DashboardPage() {
             </ResponsiveContainer>
           ) : (
             <div className="h-44 flex items-center justify-center text-slate-600 text-sm">
-              {isLoading ? 'Carregando...' : 'Sem dados nos últimos 7 dias'}
+              {isLoading ? 'Carregando...' : 'Sem dados no período selecionado'}
             </div>
           )}
         </div>
@@ -154,15 +196,15 @@ export default function DashboardPage() {
       </div>
 
       {/* Avg Duration + Flakiness — side by side */}
-      {(avgByProject.length > 0 || flakyTcs.length > 0) && (
+      {hasInsightsSection && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {avgByProject.length > 0 && (
-            <div className="card p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Timer className="w-4 h-4 text-cyan-400" />
-                <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Tempo médio por projeto</h2>
-                <span className="text-xs ml-1" style={{ color: 'var(--text-muted)' }}>últimos 7 dias</span>
-              </div>
+          <div className="card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Timer className="w-4 h-4 text-cyan-400" />
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Tempo médio por projeto</h2>
+              <span className="text-xs ml-1" style={{ color: 'var(--text-muted)' }}>{chartLabel}</span>
+            </div>
+            {avgByProject.length > 0 ? (
               <div className="space-y-2">
                 {avgByProject.map((proj, i) => {
                   const maxAvg = avgByProject[0].avg;
@@ -183,16 +225,18 @@ export default function DashboardPage() {
                   );
                 })}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="h-[92px] flex items-center justify-center text-sm" style={{ color: 'var(--text-muted)' }}>Sem dados de duração no período</div>
+            )}
+          </div>
 
-          {flakyTcs.length > 0 && (
-            <div className="card p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Zap className="w-4 h-4 text-amber-400" />
-                <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Top Casos Flaky</h2>
-                <span className="text-xs ml-1" style={{ color: 'var(--text-muted)' }}>instabilidade nos últimos runs</span>
-              </div>
+          <div className="card p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Zap className="w-4 h-4 text-amber-400" />
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--text)' }}>Top Casos Flaky</h2>
+              <span className="text-xs ml-1" style={{ color: 'var(--text-muted)' }}>instabilidade no período</span>
+            </div>
+            {flakyTcs.length > 0 ? (
               <div className="space-y-2">
                 {flakyTcs.map(tc => (
                   <div key={tc.id} className="flex items-center gap-3">
@@ -212,8 +256,10 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="h-[92px] flex items-center justify-center text-sm" style={{ color: 'var(--text-muted)' }}>Nenhum caso flaky detectado no período</div>
+            )}
+          </div>
         </div>
       )}
 
@@ -272,7 +318,7 @@ function StatCard({ icon: Icon, label, value, color, onClick }: any) {
   const colorMap: Record<string, string> = {
     blue: 'text-blue-400 bg-blue-500/10',
     indigo: 'text-indigo-400 bg-indigo-500/10',
-    purple: 'text-purple-400 bg-purple-500/10',
+    teal: 'text-teal-400 bg-teal-500/10',
     cyan: 'text-cyan-400 bg-cyan-500/10',
     green: 'text-green-400 bg-green-500/10',
     yellow: 'text-yellow-400 bg-yellow-500/10',

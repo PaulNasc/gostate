@@ -67,7 +67,7 @@ export default function AgentsPage() {
           href="http://localhost:4001/agents"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all hover:bg-violet-500/10 text-violet-400 border border-violet-500/20"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-all hover:bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
         >
           <ExternalLink className="w-3.5 h-3.5" /> Gerenciar no Admin
         </a>
@@ -77,8 +77,8 @@ export default function AgentsPage() {
         <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin text-slate-500" /></div>
       ) : agents.length === 0 ? (
         <div className="card p-10 flex flex-col items-center text-center max-w-lg mx-auto">
-          <div className="w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mb-4">
-            <Server className="w-7 h-7 text-violet-400" />
+          <div className="w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-4">
+            <Server className="w-7 h-7 text-cyan-400" />
           </div>
           <p className="font-semibold text-base mb-1" style={{ color: 'var(--text)' }}>Nenhum agente registrado</p>
           <p className="text-sm mb-5" style={{ color: 'var(--text-muted)' }}>
@@ -87,17 +87,17 @@ export default function AgentsPage() {
           <div className="w-full rounded-xl border p-4 text-left mb-4" style={{ borderColor: 'var(--border)', background: 'var(--surface-2)' }}>
             <p className="text-xs font-semibold mb-2" style={{ color: 'var(--text-muted)' }}>Como conectar um agente:</p>
             <ol className="space-y-1.5 text-xs" style={{ color: 'var(--text-muted)' }}>
-              <li className="flex gap-2"><span className="text-violet-400 font-bold shrink-0">1.</span> Acesse o painel Admin e crie um agente</li>
-              <li className="flex gap-2"><span className="text-violet-400 font-bold shrink-0">2.</span> Copie o comando de instalação gerado</li>
-              <li className="flex gap-2"><span className="text-violet-400 font-bold shrink-0">3.</span> Execute o comando no servidor ou máquina local</li>
-              <li className="flex gap-2"><span className="text-violet-400 font-bold shrink-0">4.</span> O agente aparecerá aqui como <span className="text-green-400">Online</span> em segundos</li>
+              <li className="flex gap-2"><span className="text-cyan-400 font-bold shrink-0">1.</span> Acesse o painel Admin e crie um agente</li>
+              <li className="flex gap-2"><span className="text-cyan-400 font-bold shrink-0">2.</span> Copie o comando de instalação gerado</li>
+              <li className="flex gap-2"><span className="text-cyan-400 font-bold shrink-0">3.</span> Execute o comando no servidor ou máquina local</li>
+              <li className="flex gap-2"><span className="text-cyan-400 font-bold shrink-0">4.</span> O agente aparecerá aqui como <span className="text-green-400">Online</span> em segundos</li>
             </ol>
           </div>
           <a
             href="http://localhost:4001/agents"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all bg-violet-500/20 text-violet-400 border border-violet-500/30 hover:bg-violet-500/30"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 hover:bg-cyan-500/30"
           >
             <ExternalLink className="w-3.5 h-3.5" /> Ir para painel Admin
           </a>
@@ -206,7 +206,7 @@ export default function AgentsPage() {
                           <span key={b} className="text-xs px-1.5 py-0.5 rounded border bg-blue-500/10 text-blue-400 border-blue-500/20">{b}</span>
                         ))}
                         {frameworks.map((f: string) => (
-                          <span key={f} className="text-xs px-1.5 py-0.5 rounded border bg-purple-500/10 text-purple-400 border-purple-500/20">{f}</span>
+                          <span key={f} className="text-xs px-1.5 py-0.5 rounded border bg-teal-500/10 text-teal-400 border-teal-500/20">{f}</span>
                         ))}
                         {caps.max_concurrent && (
                           <span className="text-xs px-1.5 py-0.5 rounded border border-slate-700 text-slate-400">

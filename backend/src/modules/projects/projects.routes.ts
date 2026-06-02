@@ -16,15 +16,54 @@ const ProjectSchema = z.object({
 router.get('/', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const projects = db.prepare(`
-    SELECT p.*, u.name as created_by_name,
-      (SELECT COUNT(*) FROM suites s WHERE s.project_id = p.id) as suites_count,
-      (SELECT COUNT(*) FROM test_cases tc JOIN suites s ON tc.suite_id = s.id WHERE s.project_id = p.id) as tc_count,
-      (SELECT COUNT(*) FROM executions e JOIN test_cases tc ON tc.id = e.test_case_id JOIN suites s ON s.id = tc.suite_id WHERE s.project_id = p.id AND e.status IN ('passed','failed','error')) as exec_total,
-      (SELECT COUNT(*) FROM executions e JOIN test_cases tc ON tc.id = e.test_case_id JOIN suites s ON s.id = tc.suite_id WHERE s.project_id = p.id AND e.status = 'passed') as exec_passed,
-      (SELECT COUNT(*) FROM executions e JOIN test_cases tc ON tc.id = e.test_case_id JOIN suites s ON s.id = tc.suite_id WHERE s.project_id = p.id AND e.status IN ('queued','running')) as running_count,
-      (SELECT e.status FROM executions e JOIN test_cases tc ON tc.id = e.test_case_id JOIN suites s ON s.id = tc.suite_id WHERE s.project_id = p.id ORDER BY e.created_at DESC LIMIT 1) as last_exec_status,
-      (SELECT e.created_at FROM executions e JOIN test_cases tc ON tc.id = e.test_case_id JOIN suites s ON s.id = tc.suite_id WHERE s.project_id = p.id ORDER BY e.created_at DESC LIMIT 1) as last_exec_at
-    FROM projects p JOIN users u ON u.id = p.created_by
+    WITH suites_agg AS (
+      SELECT project_id, COUNT(*) as suites_count
+      FROM suites
+      GROUP BY project_id
+    ),
+    tc_agg AS (
+      SELECT s.project_id, COUNT(*) as tc_count
+      FROM test_cases tc
+      JOIN suites s ON tc.suite_id = s.id
+      GROUP BY s.project_id
+    ),
+    exec_agg AS (
+      SELECT 
+        s.project_id,
+        SUM(CASE WHEN e.status IN ('passed','failed','error') THEN 1 ELSE 0 END) as exec_total,
+        SUM(CASE WHEN e.status = 'passed' THEN 1 ELSE 0 END) as exec_passed,
+        SUM(CASE WHEN e.status IN ('queued','running') THEN 1 ELSE 0 END) as running_count
+      FROM executions e
+      JOIN test_cases tc ON tc.id = e.test_case_id
+      JOIN suites s ON s.id = tc.suite_id
+      GROUP BY s.project_id
+    ),
+    last_exec AS (
+      SELECT 
+        s.project_id,
+        e.status as last_exec_status,
+        e.created_at as last_exec_at,
+        ROW_NUMBER() OVER (PARTITION BY s.project_id ORDER BY e.created_at DESC) as rn
+      FROM executions e
+      JOIN test_cases tc ON tc.id = e.test_case_id
+      JOIN suites s ON s.id = tc.suite_id
+    )
+    SELECT 
+      p.*, 
+      u.name as created_by_name,
+      COALESCE(sa.suites_count, 0) as suites_count,
+      COALESCE(ta.tc_count, 0) as tc_count,
+      COALESCE(ea.exec_total, 0) as exec_total,
+      COALESCE(ea.exec_passed, 0) as exec_passed,
+      COALESCE(ea.running_count, 0) as running_count,
+      le.last_exec_status,
+      le.last_exec_at
+    FROM projects p
+    JOIN users u ON u.id = p.created_by
+    LEFT JOIN suites_agg sa ON sa.project_id = p.id
+    LEFT JOIN tc_agg ta ON ta.project_id = p.id
+    LEFT JOIN exec_agg ea ON ea.project_id = p.id
+    LEFT JOIN last_exec le ON le.project_id = p.id AND le.rn = 1
     ORDER BY p.created_at DESC
   `).all();
   res.json({ projects });

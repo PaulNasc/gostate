@@ -40,7 +40,7 @@ function IconExecutions({ active }: { active: boolean }) {
 }
 
 function IconReports({ active }: { active: boolean }) {
-  const c = active ? '#a78bfa' : 'currentColor';
+  const c = active ? '#22d3ee' : 'currentColor';
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
       <rect x="2" y="9" width="2.5" height="5" rx="0.8" fill={c} opacity={active ? 1 : 0.5} />
@@ -114,7 +114,7 @@ function IconUsers({ active }: { active: boolean }) {
 }
 
 function IconAudit({ active }: { active: boolean }) {
-  const c = active ? '#a78bfa' : 'currentColor';
+  const c = active ? '#22d3ee' : 'currentColor';
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
       <path d="M8 2L3 4v4c0 3 2.5 5 5 6 2.5-1 5-3 5-6V4L8 2z" stroke={c} strokeWidth="1.3" strokeLinejoin="round" opacity={active ? 0.85 : 0.45} />

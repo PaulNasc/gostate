@@ -45,7 +45,7 @@ function NewTokenModal({ onClose, onCreate }: { onClose: () => void; onCreate: (
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1">Nome do token <span className="text-red-400">*</span></label>
             <input
-              className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-slate-600 outline-none focus:ring-1 focus:ring-violet-500"
+              className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-slate-600 outline-none focus:ring-1 focus:ring-cyan-500"
               style={{ background: '#0a0d14', border: '1px solid #2a3352' }}
               placeholder="Ex: CI/CD GitHub Actions, Deploy Pipeline..."
               value={name}
@@ -59,7 +59,7 @@ function NewTokenModal({ onClose, onCreate }: { onClose: () => void; onCreate: (
               Expiração <span className="text-xs font-normal text-slate-600">(opcional — deixe em branco para não expirar)</span>
             </label>
             <input
-              className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-slate-600 outline-none focus:ring-1 focus:ring-violet-500"
+              className="w-full px-3 py-2 rounded-lg text-sm text-white placeholder-slate-600 outline-none focus:ring-1 focus:ring-cyan-500"
               style={{ background: '#0a0d14', border: '1px solid #2a3352' }}
               type="datetime-local"
               value={expires}
@@ -77,7 +77,7 @@ function NewTokenModal({ onClose, onCreate }: { onClose: () => void; onCreate: (
         <div className="flex gap-2 pt-1">
           <button
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-50"
-            style={{ background: 'rgba(124,58,237,0.25)', color: '#a78bfa', border: '1px solid rgba(124,58,237,0.4)' }}
+            style={{ background: 'rgba(124,58,237,0.25)', color: '#22d3ee', border: '1px solid rgba(124,58,237,0.4)' }}
             disabled={!name.trim() || create.isPending}
             onClick={() => create.mutate()}
           >
@@ -134,14 +134,14 @@ function RevealTokenModal({ rawToken, onClose }: { rawToken: string; onClose: ()
               </button>
             </div>
           </div>
-          <div className="p-4 font-mono text-sm break-all select-all text-violet-300">
+          <div className="p-4 font-mono text-sm break-all select-all text-cyan-300">
             {visible ? rawToken : rawToken.slice(0, 12) + '•'.repeat(Math.max(0, rawToken.length - 12))}
           </div>
         </div>
 
         <div className="rounded-xl p-4 space-y-2 text-xs" style={{ background: '#0a0f1a', border: '1px solid #1e2a3a' }}>
           <p className="font-semibold text-slate-300">Como usar</p>
-          <p className="text-slate-500">Inclua no header <code className="text-violet-400">Authorization: Bearer SEU_TOKEN</code> em todas as requisições à API.</p>
+          <p className="text-slate-500">Inclua no header <code className="text-cyan-400">Authorization: Bearer SEU_TOKEN</code> em todas as requisições à API.</p>
           <div className="rounded-lg p-3 font-mono text-xs mt-2" style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid #2a3352' }}>
             <p className="text-slate-500"># Exemplo com curl</p>
             <p className="text-slate-300 mt-1">curl -H "Authorization: Bearer {rawToken.slice(0, 16)}..." \</p>
@@ -197,7 +197,7 @@ export default function ApiTokensPage() {
       <div className="flex items-center justify-between px-6 py-5 border-b flex-shrink-0" style={{ borderColor: '#1e2a3a' }}>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: 'rgba(124,58,237,0.2)' }}>
-            <KeyRound className="w-4 h-4 text-violet-400" />
+            <KeyRound className="w-4 h-4 text-cyan-400" />
           </div>
           <div>
             <h1 className="text-lg font-bold text-white">API Tokens</h1>
@@ -206,7 +206,7 @@ export default function ApiTokensPage() {
         </div>
         <button
           className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all disabled:opacity-40"
-          style={{ background: 'rgba(124,58,237,0.25)', color: '#a78bfa', border: '1px solid rgba(124,58,237,0.4)' }}
+          style={{ background: 'rgba(124,58,237,0.25)', color: '#22d3ee', border: '1px solid rgba(124,58,237,0.4)' }}
           onClick={() => setShowNewModal(true)}
           disabled={tokens.length >= 20}
         >
@@ -226,7 +226,7 @@ export default function ApiTokensPage() {
           >
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <Info className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
-              <span>Tokens com prefixo <code className="text-violet-400">gst_</code> autenticam via header <code className="text-violet-400">Authorization: Bearer</code>. Limite: <strong className="text-white">20 tokens</strong> por usuário.</span>
+              <span>Tokens com prefixo <code className="text-cyan-400">gst_</code> autenticam via header <code className="text-cyan-400">Authorization: Bearer</code>. Limite: <strong className="text-white">20 tokens</strong> por usuário.</span>
             </div>
             <ChevronDown className={`w-3.5 h-3.5 text-slate-600 flex-shrink-0 ml-3 transition-transform ${showGuide ? 'rotate-180' : ''}`} />
           </button>
@@ -270,13 +270,13 @@ export default function ApiTokensPage() {
         ) : tokens.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 rounded-2xl" style={{ background: '#0a0f1a', border: '1px dashed #2a3352' }}>
             <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4" style={{ background: 'rgba(124,58,237,0.1)' }}>
-              <KeyRound className="w-7 h-7 text-violet-600" />
+              <KeyRound className="w-7 h-7 text-cyan-600" />
             </div>
             <p className="text-slate-400 font-medium mb-1">Nenhum token criado</p>
             <p className="text-sm text-slate-600 mb-5 text-center max-w-xs">Crie um token para integrar CI/CD pipelines, GitHub Actions ou scripts externos com a API do goState</p>
             <button
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all"
-              style={{ background: 'rgba(124,58,237,0.25)', color: '#a78bfa', border: '1px solid rgba(124,58,237,0.4)' }}
+              style={{ background: 'rgba(124,58,237,0.25)', color: '#22d3ee', border: '1px solid rgba(124,58,237,0.4)' }}
               onClick={() => setShowNewModal(true)}
             >
               <Plus className="w-4 h-4" /> Criar primeiro token
@@ -297,8 +297,8 @@ export default function ApiTokensPage() {
                   }}
                 >
                   {/* Icon */}
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${expired ? 'bg-red-500/10' : 'bg-violet-500/10'}`}>
-                    <KeyRound className={`w-4 h-4 ${expired ? 'text-red-400' : 'text-violet-400'}`} />
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${expired ? 'bg-red-500/10' : 'bg-cyan-500/10'}`}>
+                    <KeyRound className={`w-4 h-4 ${expired ? 'text-red-400' : 'text-cyan-400'}`} />
                   </div>
 
                   {/* Info */}
@@ -312,7 +312,7 @@ export default function ApiTokensPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-4 text-xs flex-wrap">
-                      <code className="font-mono text-violet-400">{token.token_prefix}••••••••</code>
+                      <code className="font-mono text-cyan-400">{token.token_prefix}••••••••</code>
                       <span className="text-slate-600">Criado: {formatDate(token.created_at)}</span>
                       {token.last_used_at && <span className="text-slate-600">Último uso: {formatDate(token.last_used_at)}</span>}
                       {token.expires_at

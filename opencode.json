@@ -1,0 +1,45 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "username": "gostate-user",
+  "skills": {
+    "paths": [".agent/skills"]
+  },
+  "agent": {
+    "project-planner": {
+      "mode": "subagent",
+      "description": "Creates detailed project plans, task breakdowns, and architecture decisions."
+    },
+    "frontend-specialist": {
+      "mode": "subagent",
+      "description": "Frontend development expert for React, Vue, CSS, HTML, and UI/UX implementation."
+    },
+    "backend-specialist": {
+      "mode": "subagent",
+      "description": "Backend development expert for APIs, Node.js, Python, databases, and server logic."
+    },
+    "database-architect": {
+      "mode": "subagent",
+      "description": "Database design expert for SQL, NoSQL, schema design, and data modeling."
+    },
+    "test-engineer": {
+      "mode": "subagent",
+      "description": "Testing expert for unit tests, E2E tests, test coverage, and quality assurance."
+    },
+    "security-auditor": {
+      "mode": "subagent",
+      "description": "Security expert for vulnerability assessment, authentication, and authorization."
+    },
+    "devops-engineer": {
+      "mode": "subagent",
+      "description": "DevOps expert for CI/CD, Docker, deployment, and infrastructure."
+    },
+    "debugger": {
+      "mode": "subagent",
+      "description": "Debugging expert for systematic error analysis and root cause investigation."
+    },
+    "explorer-agent": {
+      "mode": "subagent",
+      "description": "Codebase discovery and exploration agent for mapping project structure."
+    }
+  }
+}

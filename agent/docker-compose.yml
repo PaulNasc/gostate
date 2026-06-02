@@ -2,22 +2,25 @@ services:
   agent:
     build: .
     restart: unless-stopped
+    shm_size: '2gb'
     environment:
       AGENT_TOKEN: ${AGENT_TOKEN:?AGENT_TOKEN is required}
       # LOCAL (backend na mesma máquina): use host.docker.internal
       # REMOTE (backend em servidor externo): use o IP/domínio público
       #   BACKEND_URL: https://gostate.suaempresa.com
       #   BACKEND_URL: http://1.2.3.4:4000
-      BACKEND_URL: ${BACKEND_URL:-http://host.docker.internal:4000}
+      BACKEND_URL:  http://host.docker.internal:4000
       NODE_ENV: production
-      AGENT_MAX_CONCURRENT: ${AGENT_MAX_CONCURRENT:-3}
+      AGENT_MAX_CONCURRENT: ${AGENT_MAX_CONCURRENT:-3}  
       PLAYWRIGHT_BROWSERS_PATH: /root/.cache/ms-playwright
+      TZ: ${TZ:-America/Sao_Paulo}
+      LANG: C.UTF-8
     extra_hosts:
       # Necessário somente para deploy LOCAL (acesso ao host via Docker)
       # Em deploy remoto (VPS/AWS) remova esta linha
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD", "node", "-e", "require('fs').statSync('/proc/1/status')"]
+      test: ["CMD", "node", "-e", "try{require('fs').readFileSync('/proc/1/cmdline','utf8').includes('node')?process.exit(0):process.exit(1)}catch(e){process.exit(1)}"]
       interval: 30s
       timeout: 10s
       retries: 3

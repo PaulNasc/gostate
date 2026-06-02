@@ -111,7 +111,7 @@ export default function UsersPage() {
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl">
+    <div className="p-6 space-y-6 w-full">
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium shadow-xl ${
           toast.type === 'success' ? 'bg-green-500/20 text-green-300 border border-green-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'
@@ -159,7 +159,7 @@ export default function UsersPage() {
                 <div className="card p-4">
                   <div className="flex items-center gap-4">
                     <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-bold text-white"
-                      style={{ background: user.role === 'admin' ? '#7c3aed' : '#2563eb' }}>
+                      style={{ background: user.role === 'admin' ? '#8b5cf6' : '#2563eb' }}>
                       {(user.name || user.email).charAt(0).toUpperCase()}
                     </div>
                     <div className="flex-1 min-w-0">

@@ -348,7 +348,7 @@ export default function TestPlansPage() {
                           {tcCount} caso{tcCount !== 1 ? 's' : ''}
                         </span>
                         {plan.max_parallel > 1 && (
-                          <span className="text-xs px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400">
+                          <span className="text-xs px-1.5 py-0.5 rounded bg-teal-500/10 text-teal-400">
                             {plan.max_parallel}x paralelo
                           </span>
                         )}

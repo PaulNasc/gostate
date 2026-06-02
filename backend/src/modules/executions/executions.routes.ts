@@ -12,6 +12,8 @@ import { logAudit } from '../../shared/audit';
 import { getIo } from '../../realtime/gateway';
 import { resolveAndDispatch } from '../../shared/dispatch';
 import { buildPayload, sendSmtpEmail } from '../integrations/integrations.routes';
+import { readExecLog } from '../../shared/exec-logs';
+import { redactSecrets } from '../../shared/utils';
 
 const createExecLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -27,7 +29,9 @@ function authenticateAgentOrUser(req: Request, res: Response, next: NextFunction
   const agentToken = req.headers['x-agent-token'] as string;
   if (agentToken) {
     const db = getDb();
-    const agent = db.prepare('SELECT id FROM agents WHERE token = ?').get(agentToken) as any;
+    const crypto = require('crypto');
+    const hash = crypto.createHash('sha256').update(agentToken).digest('hex');
+    const agent = db.prepare('SELECT id FROM agents WHERE token_hash = ?').get(hash) as any;
     if (!agent) { res.status(401).json({ error: 'Token de agente inválido' }); return; }
     (req as any).agentId = agent.id;
     (req as any).isAgent = true;
@@ -78,6 +82,24 @@ const CreateExecSchema = z.object({
   timeout: z.number().int().min(5000).max(300000).default(60000),
 });
 
+const CreateExecutionCommentSchema = z.object({
+  content: z.string().min(1).max(2000),
+  step_index: z.number().int().min(0).optional(),
+  timestamp_ms: z.number().int().min(0).optional(),
+});
+
+const CreateExecutionInterventionSchema = z.object({
+  type: z.enum(['add_step', 'update_selector', 'insert_wait', 'add_assertion', 'note']),
+  label: z.string().min(1).max(200),
+  payload: z.record(z.any()).default({}),
+  target_step_index: z.number().int().min(0).optional(),
+  target_timestamp_ms: z.number().int().min(0).optional(),
+});
+
+const UpdateExecutionInterventionSchema = z.object({
+  status: z.enum(['pending', 'approved', 'applied', 'rejected', 'cancelled']),
+});
+
 router.get('/', authenticate, requireProjectAccess('viewer', (req) => req.query.project_id as string | undefined), (req: AuthRequest, res: Response) => {
   const db = getDb();
   const {
@@ -112,7 +134,10 @@ router.get('/', authenticate, requireProjectAccess('viewer', (req) => req.query.
   const total = (db.prepare(`SELECT COUNT(*) as n ${baseJoin}${where}`).get(...params) as any).n;
 
   const listQuery = `
-    SELECT e.*,
+    SELECT 
+      e.id, e.test_plan_id, e.test_case_id, e.script_id, e.agent_id, e.triggered_by, 
+      e.status, e.started_at, e.finished_at, e.duration_ms, e.video_enabled, 
+      e.screenshot_enabled, e.browsers, e.environment_id, e.schedule_id, e.created_at,
       tc.title as tc_title,
       s.filename as script_filename,
       COALESCE(s.project_id, su.project_id) as project_id,
@@ -121,7 +146,7 @@ router.get('/', authenticate, requireProjectAccess('viewer', (req) => req.query.
       u.name as triggered_by_name
     ${baseJoin}${where}
     ORDER BY
-      CASE e.status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END ASC,
+      CASE e.status WHEN 'running' THEN 0 WHEN 'paused' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END ASC,
       CASE e.status WHEN 'queued' THEN e.created_at END ASC,
       CASE e.status WHEN 'queued' THEN NULL ELSE e.created_at END DESC
     LIMIT ? OFFSET ?`;
@@ -172,6 +197,24 @@ router.post('/', authenticate, createExecLimiter, requireProjectAccess('editor',
   const io = getIo();
   io.emit('exec:created', execution);
 
+  // Fire webhooks for queued status (needs project info)
+  const queuedExec = db.prepare(`
+    SELECT e.*, tc.title as tc_title,
+      COALESCE(s2.project_id, su2.project_id) as project_id,
+      p2.name as project_name
+    FROM executions e
+    LEFT JOIN test_cases tc ON tc.id = e.test_case_id
+    LEFT JOIN suites su2 ON su2.id = tc.suite_id
+    LEFT JOIN scripts s2 ON s2.id = e.script_id
+    LEFT JOIN projects p2 ON p2.id = COALESCE(s2.project_id, su2.project_id)
+    WHERE e.id = ?
+  `).get(id) as any;
+  if (queuedExec) {
+    fireWebhooks(db, 'queued', queuedExec, false).catch((e: any) => {
+      console.error('[Webhook] queued path error:', e?.message || e);
+    });
+  }
+
   if (availableAgent) {
     db.prepare('UPDATE executions SET agent_id = ? WHERE id = ?').run(availableAgent.id, id);
     resolveAndDispatch(db, io, {
@@ -184,10 +227,8 @@ router.post('/', authenticate, createExecLimiter, requireProjectAccess('editor',
       browsers: browsersJson,
       environment_id: environment_id || null,
       timeout: parse.data.timeout,
+      scriptContent: bodyScriptContent || undefined,
     });
-    if (bodyScriptContent) {
-      io.to(`agent:${availableAgent.id}`).emit('exec:dispatch', { execId: id, scriptContent: bodyScriptContent });
-    }
   }
 
   const tcForAudit = test_case_id ? db.prepare('SELECT title FROM test_cases WHERE id = ?').get(test_case_id) as any : null;
@@ -198,18 +239,38 @@ router.post('/', authenticate, createExecLimiter, requireProjectAccess('editor',
 
 router.get('/:id', authenticate, (req: AuthRequest, res: Response) => {
   const db = getDb();
-  const execution = db.prepare('SELECT * FROM executions WHERE id = ?').get(req.params.id) as any;
+  const execution = db.prepare(`
+    SELECT e.*, a.name as agent_name
+    FROM executions e
+    LEFT JOIN agents a ON a.id = e.agent_id
+    WHERE e.id = ?
+  `).get(req.params.id) as any;
   if (!execution) { res.status(404).json({ error: 'Execução não encontrada' }); return; }
   const steps = db.prepare('SELECT * FROM exec_steps WHERE execution_id = ? ORDER BY step_index ASC').all(req.params.id);
   const artifacts = db.prepare('SELECT * FROM exec_artifacts WHERE execution_id = ?').all(req.params.id);
-  res.json({ execution, steps, artifacts });
+  const comments = db.prepare(`
+    SELECT c.*, u.name as user_name
+    FROM execution_comments c
+    JOIN users u ON u.id = c.user_id
+    WHERE c.execution_id = ?
+    ORDER BY c.created_at ASC
+  `).all(req.params.id);
+  const interventions = db.prepare(`
+    SELECT i.*, u.name as user_name
+    FROM execution_interventions i
+    JOIN users u ON u.id = i.user_id
+    WHERE i.execution_id = ?
+    ORDER BY i.created_at ASC
+  `).all(req.params.id);
+  res.json({ execution, steps, artifacts, comments, interventions });
 });
 
 router.get('/:id/logs', authenticate, (req: AuthRequest, res: Response) => {
   const db = getDb();
   const execution = db.prepare('SELECT id, logs, status FROM executions WHERE id = ?').get(req.params.id) as any;
   if (!execution) { res.status(404).json({ error: 'Execução não encontrada' }); return; }
-  res.json({ logs: execution.logs || '', status: execution.status });
+  const fileLogs = readExecLog(req.params.id);
+  res.json({ logs: fileLogs || execution.logs || '', status: execution.status });
 });
 
 router.post('/:id/cancel', authenticate, (req: AuthRequest, res: Response) => {
@@ -238,13 +299,116 @@ router.post('/:id/artifacts', authenticateAgentOrUser, upload.single('file'), (r
   const relPath = path.join('artifacts', `exec_${req.params.id}`, req.file.filename);
   const url = `/api/artifacts/${req.params.id}/${req.file.filename}`;
   const size = req.file.size;
+  const createdAt = new Date().toISOString();
+  const timestampMs = Number(req.body.timestamp_ms) || Date.now();
 
   db.prepare('INSERT INTO exec_artifacts (id, execution_id, type, filename, path, url, size_bytes) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, req.params.id, type, req.file.filename, relPath, url, size);
 
-  const io = getIo();
-  io.emit('exec:artifact', { execId: req.params.id, type, url });
+  const artifact = {
+    id,
+    execution_id: req.params.id,
+    type,
+    filename: req.file.filename,
+    url,
+    size_bytes: size,
+    created_at: createdAt,
+    timestamp_ms: timestampMs,
+  };
 
-  res.status(201).json({ artifact: { id, type, filename: req.file.filename, url, size_bytes: size } });
+  const io = getIo();
+  io.emit('exec:artifact', { execId: req.params.id, artifact });
+
+  res.status(201).json({ artifact });
+});
+
+router.post('/:id/comments', authenticate, (req: AuthRequest, res: Response) => {
+  const db = getDb();
+  const execution = db.prepare('SELECT id FROM executions WHERE id = ?').get(req.params.id) as any;
+  if (!execution) { res.status(404).json({ error: 'Execução não encontrada' }); return; }
+
+  const parse = CreateExecutionCommentSchema.safeParse(req.body);
+  if (!parse.success) { res.status(400).json({ error: 'Dados inválidos', details: parse.error.flatten() }); return; }
+
+  const id = uuidv4();
+  db.prepare(`
+    INSERT INTO execution_comments (id, execution_id, user_id, content, step_index, timestamp_ms)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(id, req.params.id, req.user!.id, parse.data.content, parse.data.step_index ?? null, parse.data.timestamp_ms ?? null);
+
+  const comment = db.prepare(`
+    SELECT c.*, u.name as user_name
+    FROM execution_comments c
+    JOIN users u ON u.id = c.user_id
+    WHERE c.id = ?
+  `).get(id) as any;
+
+  const io = getIo();
+  io.emit('exec:comment', { execId: req.params.id, comment });
+
+  res.status(201).json({ comment });
+});
+
+router.post('/:id/interventions', authenticate, (req: AuthRequest, res: Response) => {
+  const db = getDb();
+  const execution = db.prepare('SELECT id, status FROM executions WHERE id = ?').get(req.params.id) as any;
+  if (!execution) { res.status(404).json({ error: 'Execução não encontrada' }); return; }
+
+  const parse = CreateExecutionInterventionSchema.safeParse(req.body);
+  if (!parse.success) { res.status(400).json({ error: 'Dados inválidos', details: parse.error.flatten() }); return; }
+
+  const id = uuidv4();
+  db.prepare(`
+    INSERT INTO execution_interventions (id, execution_id, user_id, type, status, target_step_index, target_timestamp_ms, label, payload)
+    VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+  `).run(
+    id,
+    req.params.id,
+    req.user!.id,
+    parse.data.type,
+    parse.data.target_step_index ?? null,
+    parse.data.target_timestamp_ms ?? null,
+    parse.data.label,
+    JSON.stringify(parse.data.payload || {}),
+  );
+
+  const intervention = db.prepare(`
+    SELECT i.*, u.name as user_name
+    FROM execution_interventions i
+    JOIN users u ON u.id = i.user_id
+    WHERE i.id = ?
+  `).get(id) as any;
+
+  const io = getIo();
+  io.emit('exec:intervention', { execId: req.params.id, intervention });
+
+  res.status(201).json({ intervention });
+});
+
+router.patch('/:id/interventions/:interventionId', authenticate, (req: AuthRequest, res: Response) => {
+  const db = getDb();
+  const intervention = db.prepare('SELECT * FROM execution_interventions WHERE id = ? AND execution_id = ?').get(req.params.interventionId, req.params.id) as any;
+  if (!intervention) { res.status(404).json({ error: 'Intervenção não encontrada' }); return; }
+
+  const parse = UpdateExecutionInterventionSchema.safeParse(req.body);
+  if (!parse.success) { res.status(400).json({ error: 'Dados inválidos', details: parse.error.flatten() }); return; }
+
+  db.prepare(`
+    UPDATE execution_interventions
+    SET status = ?, resolved_at = CASE WHEN ? IN ('applied','rejected','cancelled') THEN datetime('now') ELSE resolved_at END
+    WHERE id = ?
+  `).run(parse.data.status, parse.data.status, req.params.interventionId);
+
+  const updated = db.prepare(`
+    SELECT i.*, u.name as user_name
+    FROM execution_interventions i
+    JOIN users u ON u.id = i.user_id
+    WHERE i.id = ?
+  `).get(req.params.interventionId) as any;
+
+  const io = getIo();
+  io.emit('exec:intervention', { execId: req.params.id, intervention: updated });
+
+  res.json({ intervention: updated });
 });
 
 router.patch('/:id/status', authenticateAgentOrUser, (req: Request, res: Response) => {
@@ -254,6 +418,8 @@ router.patch('/:id/status', authenticateAgentOrUser, (req: Request, res: Respons
   if (!execution) { res.status(404).json({ error: 'Execução não encontrada' }); return; }
 
   const finished = ['passed', 'failed', 'error', 'cancelled'].includes(status);
+  const redactedResult = result ? redactSecrets(result) : null;
+  const redactedLogs = logs ? redactSecrets(logs) : (execution.logs || null);
   const setParts = [
     'status = ?',
     'logs = ?',
@@ -263,17 +429,32 @@ router.patch('/:id/status', authenticateAgentOrUser, (req: Request, res: Respons
     ...(status === 'running' ? ['started_at = datetime(\'now\')'] : []),
   ];
   db.prepare(`UPDATE executions SET ${setParts.join(', ')} WHERE id = ?`
-  ).run(status, logs || execution.logs || null, result || null, duration_ms || null, req.params.id);
+  ).run(status, redactedLogs, redactedResult, duration_ms || null, req.params.id);
 
   if (steps && Array.isArray(steps)) {
     for (const step of steps) {
-      const stepId = uuidv4();
+      const stepId = `${req.params.id}_step_${step.step_index}`;
       db.prepare('INSERT OR REPLACE INTO exec_steps (id, execution_id, step_index, name, type, status, duration_ms, error_message, screenshot_url, timestamp_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(stepId, req.params.id, step.step_index, step.name, step.type || null, step.status, step.duration_ms || null, step.error_message || null, step.screenshot_url || null, step.timestamp_ms || null);
     }
   }
 
   if (finished && execution.agent_id) {
     db.prepare('UPDATE agents SET status = ? WHERE id = ?').run('online', execution.agent_id);
+  }
+
+  // --- Optimização de Espaço: 
+  // Deletar artefatos se o teste PASSOU (pois não precisam de depuração) e manter nos testes com falha/erro.
+  if (status === 'passed') {
+    try {
+      const execDir = path.join(__dirname, '..', '..', '..', 'data', 'artifacts', `exec_${req.params.id}`);
+      if (fs.existsSync(execDir)) {
+        fs.rmSync(execDir, { recursive: true, force: true });
+      }
+      db.prepare('DELETE FROM exec_artifacts WHERE execution_id = ?').run(req.params.id);
+      db.prepare('UPDATE exec_steps SET screenshot_url = NULL WHERE execution_id = ?').run(req.params.id);
+    } catch (err) {
+      console.error('[Cleanup] Erro ao limpar artefatos de teste com sucesso:', err);
+    }
   }
 
   const updatedExec = db.prepare(`
@@ -294,15 +475,15 @@ router.patch('/:id/status', authenticateAgentOrUser, (req: Request, res: Respons
   else if (finished) io.emit('exec:finished', updatedExec);
   else io.emit('exec:update', updatedExec);
 
-  if (finished) {
-    fireWebhooks(db, status, updatedExec, !!updatedExec.schedule_id).catch((e: any) => {
-      console.error('[Webhook] PATCH path error:', e?.message || e);
+  // Fire webhooks on every status transition (running, passed, failed, error, etc.)
+  fireWebhooks(db, status, updatedExec, !!updatedExec.schedule_id).catch((e: any) => {
+    console.error('[Webhook] PATCH path error:', e?.message || e);
+  });
+
+  if (finished && updatedExec?.test_plan_id) {
+    checkPlanCompletion(db, updatedExec.test_plan_id).catch((e: any) => {
+      console.error('[Plan] checkPlanCompletion error:', e?.message || e);
     });
-    if (updatedExec?.test_plan_id) {
-      checkPlanCompletion(db, updatedExec.test_plan_id).catch((e: any) => {
-        console.error('[Plan] checkPlanCompletion error:', e?.message || e);
-      });
-    }
   }
 
   res.json({ execution: updatedExec });
@@ -318,6 +499,8 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
     failed: 'execution.failed',
     error: 'execution.error',
     running: 'execution.started',
+    queued: 'execution.queued',
+    cancelled: 'execution.error',
   };
   const event = eventMap[status];
   console.log(`[Webhook] fireWebhooks called — status=${status} event=${event} exec_id=${exec?.id} project_id=${exec?.project_id}`);
@@ -464,6 +647,13 @@ async function fireWebhooks(db: any, status: string, exec: any, fromSchedule = f
         db.prepare(`UPDATE integration_deliveries SET status='delivered', status_code=200 WHERE id=?`).run(dId);
         console.log(`[Webhook] ${intg.label} e-mail SMTP enviado com sucesso`);
       } else {
+        const { isSafeUrl } = require('../../shared/ssrf');
+        if (!(await isSafeUrl(intg.webhook_url))) {
+          console.warn(`[Webhook] Blocked unsafe/private webhook URL (SSRF prevention): ${intg.webhook_url}`);
+          db.prepare(`UPDATE integration_deliveries SET status='failed', error='Blocked unsafe URL (SSRF prevention)' WHERE id=?`).run(dId);
+          continue;
+        }
+
         const payload = buildPayload(intg.type, webhookData);
         if (intg.type === 'discord' && artifactFiles && artifactFiles.length > 0) {
           await sendDiscordWithFiles(intg.webhook_url, payload, artifactFiles);

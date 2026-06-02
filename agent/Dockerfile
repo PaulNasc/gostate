@@ -47,7 +47,7 @@ WORKDIR /app
 
 # Install dependencies first (better layer caching)
 COPY package*.json ./
-RUN npm ci --omit=dev=false
+RUN npm ci
 
 # Install Playwright browsers — chromium only by default
 # To enable all browsers, change the line below to:
@@ -64,8 +64,8 @@ ENV NODE_ENV=production
 ENV AGENT_MAX_CONCURRENT=3
 ENV BACKEND_URL=http://host.docker.internal:4000
 
-# Healthcheck: verify process is alive (agent has no HTTP port by default)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD node -e "require('fs').statSync('/proc/1/status')" || exit 1
+# Healthcheck: verify Node.js process is actually running
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+  CMD node -e "try{var c=require('fs').readFileSync('/proc/1/cmdline','utf8');c.includes('node')?process.exit(0):process.exit(1)}catch(e){process.exit(1)}"
 
 CMD ["node", "dist/agent.js"]

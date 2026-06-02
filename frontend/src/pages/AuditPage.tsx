@@ -9,7 +9,7 @@ const ACTION_COLORS: Record<string, string> = {
   update: 'text-blue-400 bg-blue-500/10 border-blue-500/20',
   delete: 'text-red-400 bg-red-500/10 border-red-500/20',
   cancel: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
-  login:  'text-purple-400 bg-purple-500/10 border-purple-500/20',
+  login:  'text-teal-400 bg-teal-500/10 border-teal-500/20',
 };
 
 const ENTITY_LABELS: Record<string, string> = {
@@ -68,7 +68,7 @@ export default function AuditPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <ScrollText className="w-5 h-5 text-violet-400" />
+          <ScrollText className="w-5 h-5 text-cyan-400" />
           <div>
             <h1 className="text-xl font-bold" style={{ color: 'var(--text)' }}>Logs</h1>
             <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
@@ -214,7 +214,7 @@ export default function AuditPage() {
                 if (p === -1) return <span key={i} className="text-xs px-1" style={{ color: 'var(--text-muted)' }}>…</span>;
                 return (
                   <button key={i}
-                    className={`text-xs w-7 h-7 rounded-lg transition-colors font-medium ${p === page ? 'bg-violet-500/20 text-violet-400' : 'btn-ghost'}`}
+                    className={`text-xs w-7 h-7 rounded-lg transition-colors font-medium ${p === page ? 'bg-cyan-500/20 text-cyan-400' : 'btn-ghost'}`}
                     onClick={() => setPage(p)}
                   >
                     {p + 1}

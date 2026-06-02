@@ -253,12 +253,29 @@ router.get('/', (req: AuthRequest, res: Response) => {
   const suite = db.prepare('SELECT * FROM suites WHERE id = ?').get(req.params.suiteId) as any;
   if (!suite) { res.status(404).json({ error: 'Suite não encontrada' }); return; }
   const tcs = db.prepare(`
+    WITH last_execs AS (
+      SELECT 
+        test_case_id,
+        id as last_exec_id,
+        status as last_exec_status,
+        created_at as last_exec_at,
+        ROW_NUMBER() OVER (PARTITION BY test_case_id ORDER BY created_at DESC) as rn
+      FROM executions
+    ),
+    exec_counts AS (
+      SELECT test_case_id, COUNT(*) as exec_count
+      FROM executions
+      GROUP BY test_case_id
+    )
     SELECT tc.*, u.name as created_by_name,
-      (SELECT COUNT(*) FROM executions e WHERE e.test_case_id = tc.id) as exec_count,
-      (SELECT status FROM executions e WHERE e.test_case_id = tc.id ORDER BY e.created_at DESC LIMIT 1) as last_exec_status,
-      (SELECT created_at FROM executions e WHERE e.test_case_id = tc.id ORDER BY e.created_at DESC LIMIT 1) as last_exec_at,
-      (SELECT id FROM executions e WHERE e.test_case_id = tc.id ORDER BY e.created_at DESC LIMIT 1) as last_exec_id
-    FROM test_cases tc JOIN users u ON u.id = tc.created_by
+      COALESCE(ec.exec_count, 0) as exec_count,
+      le.last_exec_status,
+      le.last_exec_at,
+      le.last_exec_id
+    FROM test_cases tc
+    JOIN users u ON u.id = tc.created_by
+    LEFT JOIN exec_counts ec ON ec.test_case_id = tc.id
+    LEFT JOIN last_execs le ON le.test_case_id = tc.id AND le.rn = 1
     WHERE tc.suite_id = ? ORDER BY tc.created_at DESC
   `).all(req.params.suiteId);
   res.json({ test_cases: tcs.map(parseTC) });
@@ -301,6 +318,13 @@ router.post('/:tcId/suggest-steps', async (req: AuthRequest, res: Response) => {
   if (!tc) { res.status(404).json({ error: 'Caso de teste não encontrado' }); return; }
 
   const { url, goal } = parse.data;
+
+  const { isSafeUrl } = require('../../shared/ssrf');
+  if (!(await isSafeUrl(url))) {
+    res.status(400).json({ error: 'URL de teste inválida ou insegura (IPs privados e locais bloqueados)' });
+    return;
+  }
+
   const cacheKey = `${req.user!.id}:${url}:${goal || ''}`;
   const cached = suggestionCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {

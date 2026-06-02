@@ -43,13 +43,13 @@ export default function UsersPage() {
 
   const roleIcon = (role: string) => {
     if (role === 'admin') return <ShieldCheck className="w-3.5 h-3.5 text-blue-400" />;
-    if (role === 'tester') return <TestTube2 className="w-3.5 h-3.5 text-purple-400" />;
+    if (role === 'tester') return <TestTube2 className="w-3.5 h-3.5 text-teal-400" />;
     return <Eye className="w-3.5 h-3.5 text-slate-400" />;
   };
 
   const roleColor = (role: string) => {
     if (role === 'admin') return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-    if (role === 'tester') return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
+    if (role === 'tester') return 'bg-teal-500/10 text-teal-400 border-teal-500/20';
     return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
   };
 

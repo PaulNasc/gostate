@@ -5,6 +5,7 @@ import { getDb } from '../../db/schema';
 import { authenticate, requireRole } from '../../shared/middleware/auth';
 import { v4 as uuidv4 } from 'uuid';
 import nodemailer from 'nodemailer';
+import { asyncValidateWebhookUrl } from '../../shared/utils';
 
 const testIntegrationLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -101,9 +102,15 @@ router.get('/', (req: any, res) => {
   }
 });
 
-router.post('/', requireRole('admin'), (req: any, res) => {
+router.post('/', requireRole('admin'), async (req: any, res) => {
   const body = integrationSchema.safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: 'Dados inválidos', details: body.error.flatten() });
+
+  // SSRF validation for webhook URLs
+  if (body.data.webhook_url && !['smtp', 'jira', 'github', 'linear', 'opsgenie', 'datadog'].includes(body.data.type)) {
+    const urlCheck = await asyncValidateWebhookUrl(body.data.webhook_url);
+    if (!urlCheck.valid) return res.status(400).json({ error: `URL de webhook bloqueada (SSRF): ${urlCheck.reason}` });
+  }
 
   const { type, label, webhook_url, events, enabled, project_id, include_flags, smtp_config } = body.data;
   const db = getDb();
@@ -130,7 +137,7 @@ router.post('/', requireRole('admin'), (req: any, res) => {
   }
 });
 
-router.patch('/:id', requireRole('admin'), (req: any, res) => {
+router.patch('/:id', requireRole('admin'), async (req: any, res) => {
   const db = getDb();
   const { id } = req.params;
   const integration = db.prepare('SELECT * FROM integrations WHERE id = ?').get(id);
@@ -138,6 +145,12 @@ router.patch('/:id', requireRole('admin'), (req: any, res) => {
 
   const body = integrationBaseSchema.partial().safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: 'Dados inválidos', details: body.error.flatten() });
+
+  // SSRF validation if webhook_url is being changed
+  if (body.data.webhook_url) {
+    const urlCheck = await asyncValidateWebhookUrl(body.data.webhook_url);
+    if (!urlCheck.valid) return res.status(400).json({ error: `URL de webhook bloqueada (SSRF): ${urlCheck.reason}` });
+  }
 
   const { label, webhook_url, events, enabled, project_id, include_flags, smtp_config } = body.data;
   const now = new Date().toISOString();

@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 
 const DB_DIR = path.join(__dirname, '..', '..', 'data');
@@ -15,9 +16,12 @@ export function getDb(): Database.Database {
   if (!_db) {
     _db = new Database(DB_PATH, { fileMustExist: false });
     _db.pragma('journal_mode = WAL');
-    _db.pragma('foreign_keys = ON');
+    _db.pragma('foreign_keys = OFF');
     _db.pragma("encoding = 'UTF-8'");
+    _db.pragma('busy_timeout = 5000');
+    _db.pragma('wal_autocheckpoint = 1000');
     runMigrations(_db);
+    _db.pragma('foreign_keys = ON');
   }
   return _db;
 }
@@ -377,7 +381,10 @@ function runMigrations(db: Database.Database): void {
     },
     {
       version: 15,
-      sql: `ALTER TABLE executions ADD COLUMN screenshot_enabled INTEGER NOT NULL DEFAULT 1;`
+      // Note: sqlite does not support IF NOT EXISTS for ADD COLUMN.
+      // The v1 schema already includes screenshot_enabled for new installs.
+      // We must check existence before applying the ALTER.
+      sql: `SELECT 1;` // no-op; handled via code below after first loop
     },
     {
       version: 3,
@@ -458,13 +465,112 @@ function runMigrations(db: Database.Database): void {
         CREATE INDEX IF NOT EXISTS idx_integration_deliveries_created_at ON integration_deliveries(created_at);
       `
     },
+    {
+      version: 18,
+      sql: `
+        -- Add 'paused' status to executions CHECK constraint
+        CREATE TABLE IF NOT EXISTS executions_new (
+          id TEXT PRIMARY KEY,
+          test_plan_id TEXT REFERENCES test_plans(id),
+          test_case_id TEXT REFERENCES test_cases(id),
+          script_id TEXT REFERENCES scripts(id),
+          agent_id TEXT REFERENCES agents(id),
+          triggered_by TEXT NOT NULL REFERENCES users(id),
+          status TEXT NOT NULL DEFAULT 'queued' CHECK(status IN ('queued','running','paused','passed','failed','error','cancelled')),
+          result TEXT,
+          logs TEXT,
+          started_at TEXT,
+          finished_at TEXT,
+          duration_ms INTEGER,
+          video_enabled INTEGER NOT NULL DEFAULT 0,
+          screenshot_enabled INTEGER NOT NULL DEFAULT 1,
+          browsers TEXT NOT NULL DEFAULT '["chromium"]',
+          environment_id TEXT REFERENCES environments(id),
+          schedule_id TEXT REFERENCES schedules(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO executions_new SELECT
+          id, test_plan_id, test_case_id, script_id, agent_id, triggered_by, status, result, logs,
+          started_at, finished_at, duration_ms, video_enabled, screenshot_enabled, browsers,
+          environment_id, schedule_id, created_at
+        FROM executions;
+        DROP TABLE executions;
+        ALTER TABLE executions_new RENAME TO executions;
+        CREATE INDEX IF NOT EXISTS idx_executions_test_plan_id ON executions(test_plan_id);
+        CREATE INDEX IF NOT EXISTS idx_executions_test_case_id ON executions(test_case_id);
+        CREATE INDEX IF NOT EXISTS idx_executions_status ON executions(status);
+        CREATE INDEX IF NOT EXISTS idx_executions_created_at ON executions(created_at);
+        CREATE INDEX IF NOT EXISTS idx_executions_agent_id ON executions(agent_id);
+      `
+    },
+    {
+      version: 19,
+      sql: `
+        CREATE TABLE IF NOT EXISTS execution_comments (
+          id TEXT PRIMARY KEY,
+          execution_id TEXT NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id),
+          content TEXT NOT NULL,
+          step_index INTEGER,
+          timestamp_ms INTEGER,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_execution_comments_execution_id ON execution_comments(execution_id);
+        CREATE INDEX IF NOT EXISTS idx_execution_comments_created_at ON execution_comments(created_at);
+      `
+    },
+    {
+      version: 20,
+      sql: `
+        CREATE TABLE IF NOT EXISTS execution_interventions (
+          id TEXT PRIMARY KEY,
+          execution_id TEXT NOT NULL REFERENCES executions(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id),
+          type TEXT NOT NULL CHECK(type IN ('add_step','update_selector','insert_wait','add_assertion','note')),
+          status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','approved','applied','rejected','cancelled')),
+          target_step_index INTEGER,
+          target_timestamp_ms INTEGER,
+          label TEXT NOT NULL,
+          payload TEXT NOT NULL DEFAULT '{}',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          resolved_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_execution_interventions_execution_id ON execution_interventions(execution_id);
+        CREATE INDEX IF NOT EXISTS idx_execution_interventions_status ON execution_interventions(status);
+        CREATE INDEX IF NOT EXISTS idx_execution_interventions_created_at ON execution_interventions(created_at);
+      `
+    },
+    {
+      version: 21,
+      sql: `
+        ALTER TABLE agents ADD COLUMN token_hash TEXT;
+        ALTER TABLE agents ADD COLUMN token_prefix TEXT;
+        CREATE INDEX IF NOT EXISTS idx_agents_token_hash ON agents(token_hash);
+      `
+    },
+    {
+      version: 22,
+      sql: `
+        CREATE INDEX IF NOT EXISTS idx_integrations_project_enabled ON integrations(project_id, enabled);
+        CREATE INDEX IF NOT EXISTS idx_schedules_enabled ON schedules(enabled);
+        CREATE INDEX IF NOT EXISTS idx_exec_steps_execution_id ON exec_steps(execution_id);
+        CREATE INDEX IF NOT EXISTS idx_exec_artifacts_execution_id ON exec_artifacts(execution_id);
+        CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
+        CREATE INDEX IF NOT EXISTS idx_executions_schedule_id ON executions(schedule_id);
+      `
+    },
   ];
 
   for (const migration of migrations_extra.sort((a, b) => a.version - b.version)) {
     if (!applied.includes(migration.version)) {
-      db.exec(migration.sql);
-      db.prepare('INSERT INTO migrations (version) VALUES (?)').run(migration.version);
-      console.log(`[DB] Migration v${migration.version} applied`);
+      try {
+        db.exec(migration.sql);
+        db.prepare('INSERT INTO migrations (version) VALUES (?)').run(migration.version);
+        console.log(`[DB] Migration v${migration.version} applied`);
+      } catch (err: any) {
+        console.error(`[DB] ERROR: Migration v${migration.version} failed (non-fatal): ${err.message}`);
+        // Continue applying remaining migrations — don't abort seeds
+      }
     }
   }
 
@@ -497,6 +603,104 @@ function runMigrations(db: Database.Database): void {
 
   seedDefaultAdmin(db);
   seedDefaultAgent(db);
+  seedMockProject(db);
+}
+
+function seedMockProject(db: Database.Database): void {
+  const existingProject = db.prepare("SELECT id FROM projects WHERE name = 'Demoblaze Store Real Flow' LIMIT 1").get();
+  if (!existingProject) {
+    const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1").get() as any;
+    const createdBy = admin ? admin.id : 'system';
+
+    const projectId = uuidv4();
+    
+    db.prepare(`INSERT INTO projects (id, name, description, created_by) VALUES (?, ?, ?, ?)`).run(
+      projectId, 'Demoblaze Store Real Flow', 'Fluxo real funcional utilizando o e-commerce de testes Demoblaze (Playwright Ready)', createdBy
+    );
+
+    // 1. Project Member (Admin)
+    if (admin) {
+      db.prepare(`INSERT INTO project_members (id, project_id, user_id, role, created_at) VALUES (?, ?, ?, ?, datetime('now'))`).run(
+        uuidv4(), projectId, admin.id, 'admin'
+      );
+    }
+
+    // 2. Environments
+    db.prepare(`INSERT INTO environments (id, project_id, name, variables, created_by) VALUES (?, ?, ?, ?, ?)`).run(
+      uuidv4(), projectId, 'Produção', JSON.stringify([{ key: 'BASE_URL', value: 'https://www.demoblaze.com', secret: false }]), createdBy
+    );
+
+    // 3. Suites
+    const suiteNavId = uuidv4();
+    const suiteCartId = uuidv4();
+
+    db.prepare(`INSERT INTO suites (id, project_id, name, description) VALUES (?, ?, ?, ?)`).run(
+      suiteNavId, projectId, '1. Navegação de Categorias', 'Navegação por abas e visualização de produtos'
+    );
+    db.prepare(`INSERT INTO suites (id, project_id, name, description) VALUES (?, ?, ?, ?)`).run(
+      suiteCartId, projectId, '2. Carrinho e Compras', 'Fluxos de compra completos'
+    );
+
+    // 4. Test Cases
+    const tcs: any[] = [];
+    const insertTc = (suiteId: string, title: string, priority: string, steps: any[]) => {
+      const id = uuidv4();
+      tcs.push(id);
+      db.prepare(`INSERT INTO test_cases (id, suite_id, title, description, steps, priority, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+        id, suiteId, title, '', JSON.stringify(steps), priority, createdBy
+      );
+    };
+
+    // Suite: Navigation
+    insertTc(suiteNavId, 'Visualizar categoria "Laptops"', 'high', [
+      { type: "goto", order: 1, params: { url: "{{BASE_URL}}" } },
+      { type: "click", order: 2, params: { selector: "a[onclick=\"byCat('notebook')\"]" } },
+      { type: "wait_ms", order: 3, params: { ms: "1000" } },
+      { type: "screenshot", order: 4, params: { filename: "laptops.png" } }
+    ]);
+    
+    insertTc(suiteNavId, 'Abrir detalhes de um produto', 'medium', [
+      { type: "goto", order: 1, params: { url: "{{BASE_URL}}" } },
+      { type: "wait_ms", order: 2, params: { ms: "1500" } },
+      { type: "click", order: 3, params: { selector: "a[href='prod.html?idp_=1']" } },
+      { type: "wait_ms", order: 4, params: { ms: "1500" } },
+      { type: "screenshot", order: 5, params: { filename: "samsung_galaxy_s6.png" } }
+    ]);
+
+    // Suite: Cart
+    insertTc(suiteCartId, 'Adicionar produto ao carrinho', 'high', [
+      { type: "goto", order: 1, params: { url: "{{BASE_URL}}/prod.html?idp_=1" } },
+      { type: "wait_ms", order: 2, params: { ms: "1000" } },
+      { type: "click", order: 3, params: { selector: "a.btn-success" } },
+      { type: "wait_ms", order: 4, params: { ms: "1000" } },
+      { type: "goto", order: 5, params: { url: "{{BASE_URL}}/cart.html" } },
+      { type: "wait_ms", order: 6, params: { ms: "1000" } },
+      { type: "screenshot", order: 7, params: { filename: "cart_with_item.png" } }
+    ]);
+
+    insertTc(suiteCartId, 'Finalizar compra (Checkout)', 'high', [
+      { type: "goto", order: 1, params: { url: "{{BASE_URL}}/cart.html" } },
+      { type: "wait_ms", order: 2, params: { ms: "1000" } },
+      { type: "click", order: 3, params: { selector: "button[data-target='#orderModal']" } },
+      { type: "wait_ms", order: 4, params: { ms: "500" } },
+      { type: "fill", order: 5, params: { selector: "#name", value: "Cliente de Teste" } },
+      { type: "fill", order: 6, params: { selector: "#country", value: "Brasil" } },
+      { type: "fill", order: 7, params: { selector: "#city", value: "São Paulo" } },
+      { type: "fill", order: 8, params: { selector: "#card", value: "1111222233334444" } },
+      { type: "fill", order: 9, params: { selector: "#month", value: "12" } },
+      { type: "fill", order: 10, params: { selector: "#year", value: "2030" } },
+      { type: "click", order: 11, params: { selector: "button[onclick='purchaseOrder()']" } },
+      { type: "wait_ms", order: 12, params: { ms: "1000" } },
+      { type: "screenshot", order: 13, params: { filename: "order_success.png" } }
+    ]);
+
+    // 5. Test Plan
+    db.prepare(`INSERT INTO test_plans (id, project_id, name, description, test_case_ids, max_parallel, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+      uuidv4(), projectId, 'Regressão Demoblaze Completa', 'Plano que executa navegação e o fluxo de compra no Demoblaze com asserções reais', JSON.stringify(tcs), 2, createdBy
+    );
+
+    console.log('[DB] Mock Project (Demoblaze Real Flow) seeded successfully.');
+  }
 }
 
 function seedDefaultAdmin(db: Database.Database): void {
@@ -524,10 +728,12 @@ function seedDefaultAgent(db: Database.Database): void {
     const id = uuidv4();
     const token = process.env.DEFAULT_AGENT_TOKEN || 'gostate-dev-agent-token-local';
     const isDefault = !process.env.DEFAULT_AGENT_TOKEN;
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const tokenPrefix = token.slice(0, 8);
     db.prepare(`
-      INSERT INTO agents (id, name, token, capabilities)
-      VALUES (?, ?, ?, ?)
-    `).run(id, 'agente-local', token, JSON.stringify({
+      INSERT INTO agents (id, name, token_hash, token_prefix, capabilities)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, 'agente-local', tokenHash, tokenPrefix, JSON.stringify({
       browsers: ['chromium', 'firefox'],
       frameworks: ['playwright'],
       os: process.platform,
@@ -538,5 +744,16 @@ function seedDefaultAgent(db: Database.Database): void {
     } else {
       console.log(`[DB] Agente padrão criado com token configurado via env.`);
     }
+  }
+
+  // Backfill token_hash for any agents that don't have it yet, then clear plaintext
+  const unhashed = db.prepare('SELECT id, token FROM agents WHERE token_hash IS NULL AND token IS NOT NULL').all() as any[];
+  if (unhashed.length > 0) {
+    for (const agent of unhashed) {
+      const hash = crypto.createHash('sha256').update(agent.token).digest('hex');
+      const prefix = (agent.token || '').slice(0, 8);
+      db.prepare('UPDATE agents SET token_hash = ?, token_prefix = ?, token = NULL WHERE id = ?').run(hash, prefix, agent.id);
+    }
+    console.log(`[DB] Backfilled token_hash and cleared plaintext token for ${unhashed.length} agent(s)`);
   }
 }

@@ -160,7 +160,7 @@ export default function ArtifactsPage() {
                         href={`http://localhost:3000/executions/${a.execution_id}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs font-mono text-violet-400 hover:text-violet-300 transition-colors"
+                        className="text-xs font-mono text-cyan-400 hover:text-cyan-300 transition-colors"
                         title={a.execution_id}
                       >
                         #{(a.execution_id || '').slice(0, 8)}
@@ -174,7 +174,7 @@ export default function ArtifactsPage() {
                         href={`${ADMIN_API}${a.url}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs px-2.5 py-1 rounded-lg border transition-colors hover:border-violet-500/50 hover:text-violet-400"
+                        className="text-xs px-2.5 py-1 rounded-lg border transition-colors hover:border-cyan-500/50 hover:text-cyan-400"
                         style={{ borderColor: '#1e2a3a', color: '#94a3b8' }}
                       >
                         Ver

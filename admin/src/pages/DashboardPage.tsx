@@ -61,14 +61,14 @@ export default function DashboardPage() {
       {/* Header */}
       <div>
         <h1 className="text-xl font-bold text-white flex items-center gap-2">
-          <Activity className="w-5 h-5 text-violet-400" /> Dashboard
+          <Activity className="w-5 h-5 text-cyan-400" /> Dashboard
         </h1>
         <p className="text-sm text-slate-400 mt-1">Visão geral do sistema goState</p>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={Bot} label="Agentes Total" value={agents.length} color="#8b5cf6" />
+        <StatCard icon={Bot} label="Agentes Total" value={agents.length} color="#06b6d4" />
         <StatCard icon={Wifi} label="Agentes Online" value={onlineAgents.length} color="#10b981" />
         <StatCard icon={Users} label="Usuários" value={users.length} color="#3b82f6" />
         <StatCard icon={Server} label="Admins" value={adminUsers.length} color="#f59e0b" />
@@ -181,7 +181,7 @@ export default function DashboardPage() {
         {/* Agents status */}
         <div className="card p-4">
           <h2 className="text-sm font-semibold text-white mb-3 flex items-center gap-2">
-            <Bot className="w-4 h-4 text-violet-400" /> Status dos Agentes
+            <Bot className="w-4 h-4 text-cyan-400" /> Status dos Agentes
           </h2>
           {agents.length === 0 ? (
             <p className="text-sm text-slate-500 py-4 text-center">Nenhum agente cadastrado</p>
@@ -213,14 +213,14 @@ export default function DashboardPage() {
               {users.map(user => (
                 <div key={user.id} className="flex items-center gap-3 py-2 border-b last:border-0" style={{ borderColor: '#1e2a3a' }}>
                   <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
-                    style={{ background: user.role === 'admin' ? '#7c3aed' : '#2563eb' }}>
+                    style={{ background: user.role === 'admin' ? '#0891b2' : '#2563eb' }}>
                     {(user.name || user.email).charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-white truncate">{user.name || '—'}</p>
                     <p className="text-xs text-slate-500 truncate">{user.email}</p>
                   </div>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${user.role === 'admin' ? 'bg-violet-500/15 text-violet-300' : 'bg-blue-500/15 text-blue-300'}`}>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${user.role === 'admin' ? 'bg-cyan-500/15 text-cyan-300' : 'bg-blue-500/15 text-blue-300'}`}>
                     {user.role}
                   </span>
                 </div>

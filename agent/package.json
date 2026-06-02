@@ -6,7 +6,7 @@
   "main": "dist/agent.js",
   "scripts": {
     "dev": "tsx src/agent.ts",
-    "build": "tsc",
+    "build": "tsc && node -e \"require('fs').copyFileSync('src/gostate-reporter.js','dist/gostate-reporter.js')\"",
     "start": "node dist/agent.js"
   },
   "dependencies": {

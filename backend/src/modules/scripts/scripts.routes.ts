@@ -7,6 +7,35 @@ import { authenticate, AuthRequest } from '../../shared/middleware/auth';
 const router = Router();
 router.use(authenticate);
 
+// Block dangerous patterns in script content to prevent sandbox escape
+const DANGEROUS_PATTERNS = [
+  { pattern: /require\s*\(\s*['"]child_process['"]\s*\)/i, message: 'Uso de child_process não é permitido' },
+  { pattern: /require\s*\(\s*['"]fs['"]\s*\)/i, message: 'Uso do módulo fs não é permitido' },
+  { pattern: /require\s*\(\s*['"]net['"]\s*\)/i, message: 'Uso do módulo net não é permitido' },
+  { pattern: /require\s*\(\s*['"]http['"]\s*\)/i, message: 'Uso do módulo http não é permitido' },
+  { pattern: /require\s*\(\s*['"]https['"]\s*\)/i, message: 'Uso do módulo https não é permitido' },
+  { pattern: /require\s*\(\s*['"]dns['"]\s*\)/i, message: 'Uso do módulo dns não é permitido' },
+  { pattern: /\bexec\s*\(/, message: 'exec() não é permitido — risco de code injection' },
+  { pattern: /\beval\s*\(/, message: 'eval() não é permitido — risco de code injection' },
+  { pattern: /\bspawn\s*\(/, message: 'spawn() não é permitido' },
+  { pattern: /\bexecSync\s*\(/, message: 'execSync() não é permitido' },
+  { pattern: /\bspawnSync\s*\(/, message: 'spawnSync() não é permitido' },
+  { pattern: /\bexecFile\s*\(/, message: 'execFile() não é permitido' },
+  { pattern: /process\.exit\s*\(/, message: 'process.exit() não é permitido' },
+  { pattern: /process\.env\s*\[/, message: 'Acesso direto a process.env não é permitido' },
+  { pattern: /__proto__/, message: 'Manipulação de __proto__ não é permitida' },
+  { pattern: /constructor\s*\[/, message: 'Acesso via constructor não é permitido' },
+];
+
+function validateScriptContent(content: string): { valid: true } | { valid: false; message: string } {
+  for (const { pattern, message } of DANGEROUS_PATTERNS) {
+    if (pattern.test(content)) {
+      return { valid: false, message };
+    }
+  }
+  return { valid: true };
+}
+
 const ScriptSchema = z.object({
   project_id: z.string().uuid(),
   filename: z.string().min(1).refine(f => f.endsWith('.spec.js') || f.endsWith('.spec.ts') || f.endsWith('.test.js') || f.endsWith('.test.ts'), {
@@ -35,6 +64,11 @@ router.get('/', (req: AuthRequest, res: Response) => {
 router.post('/', (req: AuthRequest, res: Response) => {
   const parse = ScriptSchema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: 'Dados inválidos', details: parse.error.flatten() }); return; }
+
+  // Validate script content against dangerous patterns
+  const contentCheck = validateScriptContent(parse.data.content);
+  if (!contentCheck.valid) { res.status(400).json({ error: `Script bloqueado: ${contentCheck.message}` }); return; }
+
   const db = getDb();
   const project = db.prepare('SELECT id FROM projects WHERE id = ?').get(parse.data.project_id) as any;
   if (!project) { res.status(404).json({ error: 'Projeto não encontrado' }); return; }
@@ -57,6 +91,13 @@ router.get('/:id', (req: AuthRequest, res: Response) => {
 router.put('/:id', (req: AuthRequest, res: Response) => {
   const parse = UpdateScriptSchema.safeParse(req.body);
   if (!parse.success) { res.status(400).json({ error: 'Dados inválidos', details: parse.error.flatten() }); return; }
+
+  // Validate script content against dangerous patterns
+  if (parse.data.content) {
+    const contentCheck = validateScriptContent(parse.data.content);
+    if (!contentCheck.valid) { res.status(400).json({ error: `Script bloqueado: ${contentCheck.message}` }); return; }
+  }
+
   const db = getDb();
   const script = db.prepare('SELECT * FROM scripts WHERE id = ?').get(req.params.id) as any;
   if (!script) { res.status(404).json({ error: 'Script não encontrado' }); return; }
@@ -70,7 +111,13 @@ router.delete('/:id', (req: AuthRequest, res: Response) => {
   const db = getDb();
   const script = db.prepare('SELECT * FROM scripts WHERE id = ?').get(req.params.id) as any;
   if (!script) { res.status(404).json({ error: 'Script não encontrado' }); return; }
-  db.prepare('DELETE FROM scripts WHERE id = ?').run(req.params.id);
+
+  const removeScript = db.transaction((scriptId: string) => {
+    db.prepare('UPDATE executions SET script_id = NULL WHERE script_id = ?').run(scriptId);
+    db.prepare('DELETE FROM scripts WHERE id = ?').run(scriptId);
+  });
+
+  removeScript(req.params.id);
   res.json({ message: 'Script excluído com sucesso' });
 });
 

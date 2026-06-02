@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { io, Socket } from 'socket.io-client';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -12,6 +12,8 @@ const AGENT_TOKEN = process.env.AGENT_TOKEN || '';
 const WORK_DIR = path.join(os.tmpdir(), 'gostate-agent');
 const MAX_CONCURRENT = Math.max(1, parseInt(process.env.AGENT_MAX_CONCURRENT || '3', 10));
 
+const LIVE_ACTION_METHODS = ['goto', 'click', 'fill', 'hover', 'dblclick', 'selectOption', 'press', 'check', 'uncheck', 'setInputFiles'];
+
 if (!AGENT_TOKEN) {
   console.error('[Agent] AGENT_TOKEN não configurado. Defina a variável de ambiente AGENT_TOKEN.');
   process.exit(1);
@@ -22,6 +24,7 @@ if (!fs.existsSync(WORK_DIR)) fs.mkdirSync(WORK_DIR, { recursive: true });
 // --- Concurrency semaphore ---
 let activeSlots = 0;
 const pendingQueue: ExecConfig[] = [];
+const inflightExecs = new Set<string>();
 
 function acquireSlot(config: ExecConfig): boolean {
   if (activeSlots < MAX_CONCURRENT) {
@@ -40,15 +43,20 @@ function releaseSlot() {
   if (next) {
     console.log(`[Agent] Fila: despachando ${next.execId} (${pendingQueue.length} restantes na fila)`);
     activeSlots++;
-    runExecution(next).finally(releaseSlot);
+    runExecution(next).finally(() => { inflightExecs.delete(next.execId); releaseSlot(); });
   } else {
     console.log(`[Agent] Slot liberado (${activeSlots}/${MAX_CONCURRENT} ativos)`);
   }
 }
 
 function dispatch(config: ExecConfig) {
+  if (inflightExecs.has(config.execId)) {
+    console.log(`[Agent] Ignorando dispatch duplicado para ${config.execId}`);
+    return;
+  }
+  inflightExecs.add(config.execId);
   if (acquireSlot(config)) {
-    runExecution(config).finally(releaseSlot);
+    runExecution(config).finally(() => { inflightExecs.delete(config.execId); releaseSlot(); });
   }
 }
 // --- End concurrency ---
@@ -82,6 +90,62 @@ function connect() {
     console.log(`[Agent] Recebida execução: ${config.execId}`);
     dispatch(config);
   });
+
+  socket.on('exec:pause', (data: { execId: string }) => {
+    const pid = pausedExecs.get(data.execId);
+    if (!pid) { console.log(`[Agent] Pause ignorado — execId ${data.execId} não encontrada`); return; }
+    try {
+      pausedFlags.set(data.execId, true);
+      if (process.platform !== 'win32') {
+        // Send SIGSTOP to the entire process group to pause Playwright inside Docker
+        try { process.kill(-pid, 'SIGSTOP'); } catch {
+          // fallback: send to direct PID if group kill fails
+          try { process.kill(pid, 'SIGSTOP'); } catch {}
+        }
+      }
+      console.log(`[Agent] Execução pausada: ${data.execId} (PID ${pid})`);
+      socket.emit('exec:paused', { execId: data.execId });
+    } catch (e: any) {
+      console.error(`[Agent] Erro ao pausar ${data.execId}: ${e.message}`);
+      // Even if signal fails, mark as paused in software
+      pausedFlags.set(data.execId, true);
+      socket.emit('exec:paused', { execId: data.execId });
+    }
+  });
+
+  socket.on('exec:resume', (data: { execId: string }) => {
+    const pid = pausedExecs.get(data.execId);
+    if (!pid) { console.log(`[Agent] Resume ignorado — execId ${data.execId} não encontrada`); return; }
+    try {
+      pausedFlags.set(data.execId, false);
+      if (process.platform !== 'win32') {
+        try { process.kill(-pid, 'SIGCONT'); } catch {
+          try { process.kill(pid, 'SIGCONT'); } catch {}
+        }
+      }
+      console.log(`[Agent] Execução retomada: ${data.execId} (PID ${pid})`);
+      socket.emit('exec:resumed', { execId: data.execId });
+    } catch (e: any) {
+      console.error(`[Agent] Erro ao retomar ${data.execId}: ${e.message}`);
+      pausedFlags.set(data.execId, false);
+      socket.emit('exec:resumed', { execId: data.execId });
+    }
+  });
+
+  // Live code patch: rewrite the script file so next run (after restart) picks up changes
+  socket.on('exec:code_patch', (data: { execId: string; content: string }) => {
+    try {
+      const scriptPath = path.join(WORK_DIR, data.execId, 'test.spec.js');
+      if (fs.existsSync(scriptPath) && typeof data.content === 'string') {
+        fs.writeFileSync(scriptPath, data.content, 'utf-8');
+        console.log(`[Agent] Script atualizado via code_patch: ${data.execId}`);
+        socket.emit('exec:code_patched', { execId: data.execId, ok: true });
+      }
+    } catch (e: any) {
+      console.error(`[Agent] Erro ao aplicar code_patch: ${e.message}`);
+      socket.emit('exec:code_patched', { execId: data.execId, ok: false, error: e.message });
+    }
+  });
 }
 
 function heartbeat() {
@@ -107,7 +171,13 @@ interface ExecConfig {
   screenshotEnabled?: boolean;
   timeout: number;
   backendUrl: string;
+  env?: Record<string, string>;
 }
+
+// Track paused executions — key=execId, value=child PID
+const pausedExecs = new Map<string, number>();
+// Software pause flag — pauses live artifact upload without killing process
+const pausedFlags = new Map<string, boolean>();
 
 async function runExecution(config: ExecConfig) {
   const { execId, backendUrl } = config;
@@ -140,10 +210,10 @@ async function runExecution(config: ExecConfig) {
     let scriptPath: string;
     if (config.scriptContent && config.scriptContent.trim()) {
       scriptPath = path.join(execWorkDir, 'test.spec.js');
-      fs.writeFileSync(scriptPath, config.scriptContent, 'utf-8');
+      fs.writeFileSync(scriptPath, instrumentScriptContent(config.scriptContent, config.screenshotEnabled !== false), 'utf-8');
     } else if (config.steps && config.steps.length > 0) {
       scriptPath = path.join(execWorkDir, 'test.spec.js');
-      const code = generatePlaywrightCode(config.steps);
+      const code = generatePlaywrightCode(config.steps, config.screenshotEnabled !== false, config.env);
       fs.writeFileSync(scriptPath, code, 'utf-8');
     } else {
       // fallback: smoke test básico
@@ -170,7 +240,8 @@ test('smoke', async ({ page }) => {
       return candidates.find(p => fs.existsSync(p)) || '';
     })();
 
-    const availableBrowsers = config.browsers.filter(b => {
+    const requestedBrowsers = Array.isArray(config.browsers) ? config.browsers : ['chromium'];
+    const availableBrowsers = requestedBrowsers.filter(b => {
       if (!browsersInstallPath) return b === 'chromium';
       const dirPrefix = b === 'webkit' ? 'webkit' : b === 'firefox' ? 'firefox' : 'chromium';
       try { return fs.readdirSync(browsersInstallPath).some(d => d.startsWith(dirPrefix)); }
@@ -178,10 +249,10 @@ test('smoke', async ({ page }) => {
     });
 
     if (availableBrowsers.length === 0) {
-      emitLog(`[goState Agent] AVISO: browsers solicitados (${config.browsers.join(', ')}) não encontrados. Usando chromium como fallback.\n`);
+      emitLog(`[goState Agent] AVISO: browsers solicitados (${requestedBrowsers.join(', ')}) não encontrados. Usando chromium como fallback.\n`);
       availableBrowsers.push('chromium');
-    } else if (availableBrowsers.length < config.browsers.length) {
-      const missing = config.browsers.filter(b => !availableBrowsers.includes(b));
+    } else if (availableBrowsers.length < requestedBrowsers.length) {
+      const missing = requestedBrowsers.filter(b => !availableBrowsers.includes(b));
       emitLog(`[goState Agent] AVISO: browsers não instalados ignorados: ${missing.join(', ')}\n`);
     }
 
@@ -194,7 +265,7 @@ test('smoke', async ({ page }) => {
     emitLog(`[goState Agent] Timeout: ${config.timeout}ms\n\n`);
 
     const startTime = Date.now();
-    const { exitCode, logs, stepResults } = await runPlaywright(execWorkDir, configPath, scriptPath, config, emitLog);
+    const { exitCode, logs, stepResults } = await runPlaywright(execWorkDir, configPath, scriptPath, config, apiBase, emitLog);
     const duration = Date.now() - startTime;
 
     const finalStatus = exitCode === 0 ? 'passed' : 'failed';
@@ -241,10 +312,24 @@ const AGENT_NODE_MODULES = (() => {
   }
 })();
 
-function generatePlaywrightCode(steps: any[]): string {
-  let code = "const { test, expect } = require('@playwright/test');\n\ntest('goState Test', async ({ page }) => {\n";
+function generatePlaywrightCode(steps: any[], screenshotEnabled = false, envVars: Record<string, string> = {}): string {
+  let code = "const { test, expect } = require('@playwright/test');\nconst path = require('path');\n\ntest('goState Test', async ({ page }) => {\n";
+  let stepIdx = 0;
+
+  const replaceEnv = (str: string) => {
+    if (typeof str !== 'string') return str;
+    return str.replace(/\{\{([^\}]+)\}\}/g, (_, key) => envVars[key] || '');
+  };
+
   for (const step of steps) {
     const p = step.params || {};
+    // Replace env variables in all params
+    for (const k in p) {
+      if (typeof p[k] === 'string') {
+        p[k] = replaceEnv(p[k]);
+      }
+    }
+    
     switch (step.type) {
       case 'goto':
         code += `  await page.goto(${JSON.stringify(p.url || 'about:blank')});
@@ -330,18 +415,49 @@ function generatePlaywrightCode(steps: any[]): string {
       default:
         code += `  // step desconhecido: ${step.type}\n`;
     }
+    // Inject per-step screenshot when enabled (after action steps, not after waits/assertions)
+    if (screenshotEnabled && ['goto', 'click', 'fill', 'hover', 'double_click', 'select_option', 'clear', 'keyboard', 'scroll'].includes(step.type)) {
+      code += `  await page.screenshot({ path: path.join('test-results', 'step-${stepIdx}.png') });\n`;
+    }
+    stepIdx++;
   }
   code += `});
 `;
   return code;
 }
 
+function instrumentScriptContent(scriptContent: string, screenshotEnabled = false): string {
+  if (!screenshotEnabled) return scriptContent;
+
+  // Wrap each test to take exactly 1 screenshot after completion
+  // This avoids multiple screenshots per action method
+  const prelude = `const { test: __gostateTest } = require('@playwright/test');
+const path = require('path');
+let __gostateStepScreenshotIdx = 0;
+__gostateTest.afterEach(async ({ page }, testInfo) => {
+  try {
+    await page.screenshot({ path: path.join('test-results', 'step-' + (__gostateStepScreenshotIdx++) + '.png') });
+  } catch {}
+});
+
+`;
+
+  return prelude + scriptContent;
+}
+
 function generatePlaywrightConfig(workDir: string, config: ExecConfig, browsers?: string[]): string {
-  const effectiveBrowsers = browsers && browsers.length > 0 ? browsers : config.browsers;
+  const effectiveBrowsers = browsers && browsers.length > 0 ? browsers : (Array.isArray(config.browsers) ? config.browsers : ['chromium']);
   const projects = effectiveBrowsers.map(b => `{ name: '${b}', use: { browserName: '${b}' } }`).join(', ');
   const video = config.videoEnabled ? `'on'` : `'retain-on-failure'`;
-  const screenshot = config.screenshotEnabled === false ? `'off'` : `'on'`;
+  // Always 'off' — per-step screenshots are injected via afterEach in the script itself,
+  // so Playwright's built-in 'on' mode (which fires after EVERY action) must not run.
+  const screenshot = `'off'`;
   const wdFwd = workDir.replace(/\\/g, '/');
+
+  // Resolve the custom reporter path (lives next to the agent source)
+  const reporterPath = path.join(__dirname, 'gostate-reporter.js').replace(/\\/g, '/');
+  const eventsFile = path.join(workDir, 'events.jsonl').replace(/\\/g, '/');
+
   return `
 module.exports = {
   testMatch: ['**/*.spec.js'],
@@ -350,12 +466,13 @@ module.exports = {
   reporter: [
     ['json', { outputFile: '${wdFwd}/results.json' }],
     ['html', { outputFolder: '${wdFwd}/html-report', open: 'never' }],
+    ['${reporterPath}', { eventsFile: '${eventsFile}' }],
   ],
   use: {
     headless: true,
     video: ${video},
     screenshot: ${screenshot},
-    trace: 'retain-on-failure',
+    trace: 'off',
   },
   outputDir: '${wdFwd}/test-results',
   projects: [${projects}],
@@ -368,15 +485,102 @@ function runPlaywright(
   configPath: string,
   scriptPath: string,
   config: ExecConfig,
+  apiBase: string,
   emitLog: (line: string) => void
 ): Promise<{ exitCode: number; logs: string; stepResults: any[] }> {
   return new Promise((resolve) => {
     let logs = '';
     let resolved = false;
 
-    const doResolve = (exitCode: number) => {
+    const eventsFile = path.join(workDir, 'events.jsonl');
+    const uploadedManifestPath = path.join(workDir, '.uploaded-artifacts.json');
+    let eventsWatcher: ReturnType<typeof setInterval> | null = null;
+    let eventsOffset = 0;
+    let artifactWatcher: ReturnType<typeof setInterval> | null = null;
+    const uploadedArtifacts = readUploadedArtifactManifest(uploadedManifestPath);
+
+    // Watch events.jsonl and emit live step events via socket
+    const startEventsWatcher = () => {
+      eventsWatcher = setInterval(() => {
+        try {
+          if (!fs.existsSync(eventsFile)) return;
+          const content = fs.readFileSync(eventsFile, 'utf-8');
+          if (content.length <= eventsOffset) return;
+          const newData = content.slice(eventsOffset);
+          eventsOffset = content.length;
+          const lines = newData.split('\n').filter(Boolean);
+          for (const line of lines) {
+            try {
+              const evt = JSON.parse(line);
+              socket.emit('exec:step', { execId: config.execId, ...evt });
+            } catch {}
+          }
+        } catch {}
+      }, 200);
+    };
+
+    const stopEventsWatcher = () => {
+      if (eventsWatcher) { clearInterval(eventsWatcher); eventsWatcher = null; }
+      // Flush remaining events
+      try {
+        if (fs.existsSync(eventsFile)) {
+          const content = fs.readFileSync(eventsFile, 'utf-8');
+          if (content.length > eventsOffset) {
+            const lines = content.slice(eventsOffset).split('\n').filter(Boolean);
+            for (const line of lines) {
+              try {
+                const evt = JSON.parse(line);
+                socket.emit('exec:step', { execId: config.execId, ...evt });
+              } catch {}
+            }
+          }
+        }
+      } catch {}
+    };
+
+    const stopArtifactWatcher = () => {
+      if (artifactWatcher) {
+        clearInterval(artifactWatcher);
+        artifactWatcher = null;
+      }
+    };
+
+    const scanAndUploadArtifacts = async () => {
+      const testResultsDir = path.join(workDir, 'test-results');
+      // Only upload: our injected step-N.png files + videos.
+      // Deliberately ignore .jpeg/.jpg (Playwright trace frames), test-failed-*.png, etc.
+      const candidates = findArtifactFiles(testResultsDir, ['.webm', '.mp4', '.png']);
+      const allowed = candidates.filter(f => isAllowedArtifact(f));
+
+      for (const file of allowed) {
+        const stat = safeStat(file);
+        if (!stat || !stat.isFile()) continue;
+        const artifactKey = buildArtifactKey(file, stat.size, stat.mtimeMs);
+        if (uploadedArtifacts.has(artifactKey)) continue;
+        try {
+          await uploadArtifactFile(apiBase, config.execId, file, uploadedArtifacts.size, emitLog);
+          uploadedArtifacts.add(artifactKey);
+          writeUploadedArtifactManifest(uploadedManifestPath, uploadedArtifacts);
+        } catch (e: any) {
+          emitLog(`[goState Agent] Falha ao enviar artefato ${path.basename(file)}: ${e.message}\n`);
+        }
+      }
+    };
+
+    artifactWatcher = setInterval(() => {
+      // Skip upload while execution is software-paused
+      if (pausedFlags.get(config.execId)) return;
+      void scanAndUploadArtifacts();
+    }, 1000);
+
+    const doResolve = async (exitCode: number) => {
       if (resolved) return;
       resolved = true;
+      stopEventsWatcher();
+      stopArtifactWatcher();
+      await scanAndUploadArtifacts();
+      pausedExecs.delete(config.execId);
+      pausedFlags.delete(config.execId);
       let stepResults: any[] = [];
       const resultsFile = path.join(workDir, 'results.json');
       if (fs.existsSync(resultsFile)) {
@@ -390,8 +594,8 @@ function runPlaywright(
 
     const binExt = process.platform === 'win32' ? '.cmd' : '';
     const playwrightBin = path.join(AGENT_NODE_MODULES, '.bin', `playwright${binExt}`);
-    const cmd = `"${playwrightBin}" test "${path.basename(scriptPath)}" --config="${configPath}"`;
-    emitLog(`[goState Agent] $ ${cmd}\n`);
+    const args = ['test', path.basename(scriptPath), `--config=${configPath}`];
+    emitLog(`[goState Agent] $ ${playwrightBin} ${args.join(' ')}\n`);
 
     const browsersPath = (() => {
       const candidates = [
@@ -409,23 +613,34 @@ function runPlaywright(
       if (!resolved) {
         emitLog(`\n[goState Agent] TIMEOUT: processo encerrado após ${hardTimeout}ms\n`);
         try { child.kill('SIGKILL'); } catch {}
-        doResolve(1);
+        void doResolve(1);
       }
     }, hardTimeout);
 
-    const child = exec(cmd, {
+    // Use spawn with detached=false but create a new process group so SIGSTOP/-pid works in Docker
+    const child = spawn(playwrightBin, args, {
       cwd: workDir,
-      timeout: config.timeout + 30000,
+      detached: false,
       env: {
         ...process.env,
+        ...(config.env || {}),
         NODE_PATH: AGENT_NODE_MODULES,
         ...(browsersPath ? { PLAYWRIGHT_BROWSERS_PATH: browsersPath } : {}),
-        // Disable ANSI color output from Playwright on Windows
+        GOSTATE_EVENTS_FILE: eventsFile,
+        GOSTATE_STEP_SCREENSHOTS: config.screenshotEnabled !== false ? '1' : '0',
+        GOSTATE_OUTPUT_DIR: path.join(workDir, 'test-results'),
         NO_COLOR: '1',
         FORCE_COLOR: '0',
         TERM: 'dumb',
       },
     });
+
+    // Store PID for pause/resume
+    if (child.pid) {
+      pausedExecs.set(config.execId, child.pid);
+    }
+
+    startEventsWatcher();
 
     child.stdout?.on('data', (d: Buffer | string) => { const s = d.toString('utf8'); logs += s; emitLog(s); });
     child.stderr?.on('data', (d: Buffer | string) => { const s = d.toString('utf8'); logs += s; emitLog(s); });
@@ -433,34 +648,60 @@ function runPlaywright(
     child.on('error', (err) => {
       emitLog(`\n[goState Agent] Erro ao executar Playwright: ${err.message}\n`);
       clearTimeout(killTimer);
-      doResolve(1);
+      void doResolve(1);
     });
 
-    child.on('exit', (code) => {
+    child.on('close', (code) => {
       clearTimeout(killTimer);
-      doResolve(code ?? 1);
+      void doResolve(code ?? 1);
     });
   });
+}
+
+function isUserStep(step: any): boolean {
+  if (!step || !step.title) return false;
+  const cat = step.category || '';
+  const title: string = step.title || '';
+  // Accept test.step blocks, expect assertions, page actions and locator actions
+  if (cat === 'test.step' || cat === 'expect') return true;
+  if (title.startsWith('page.') || title.startsWith('locator.') || title.startsWith('expect(')) return true;
+  // Reject internal Playwright hooks and fixture lifecycle
+  const skipPrefixes = ['Before Hooks', 'After Hooks', 'fixture:', 'Worker Cleanup', 'browserType.', 'browser.', 'context.', 'tracing.'];
+  if (skipPrefixes.some(p => title.startsWith(p))) return false;
+  // Reject lines that look like internal titles
+  return cat === 'action' || cat === 'navigation';
 }
 
 function parsePlaywrightResults(json: any): any[] {
   const steps: any[] = [];
   let idx = 0;
+
+  const visitStep = (step: any) => {
+    if (!step) return;
+    const nested = Array.isArray(step.steps) ? step.steps : [];
+    if (isUserStep(step)) {
+      steps.push({
+        step_index: idx++,
+        name: step.title,
+        type: step.category || 'action',
+        status: step.error ? 'failed' : 'passed',
+        duration_ms: typeof step.duration === 'number' ? step.duration : null,
+        error_message: step.error?.message || null,
+        timestamp_ms: step.startTime ? new Date(step.startTime).getTime() : null,
+      });
+      // Visit nested steps (e.g. inside test.step blocks)
+      nested.forEach(visitStep);
+    } else {
+      // Skip this node but still visit children (e.g. steps inside Before Hooks that wrap user steps)
+      nested.forEach(visitStep);
+    }
+  };
+
   for (const suite of json.suites || []) {
     for (const spec of suite.specs || []) {
       for (const test of spec.tests || []) {
         for (const result of test.results || []) {
-          for (const step of result.steps || []) {
-            steps.push({
-              step_index: idx++,
-              name: step.title,
-              type: 'action',
-              status: step.error ? 'failed' : 'passed',
-              duration_ms: step.duration,
-              error_message: step.error?.message || null,
-              timestamp_ms: step.startTime,
-            });
-          }
+          for (const step of result.steps || []) visitStep(step);
         }
       }
     }
@@ -468,46 +709,110 @@ function parsePlaywrightResults(json: any): any[] {
   return steps;
 }
 
+function findArtifactFiles(dir: string, exts: string[]): string[] {
+  if (!fs.existsSync(dir)) return [];
+  const results: string[] = [];
+  const walk = (d: string) => {
+    try {
+      for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+        const full = path.join(d, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (exts.some(e => entry.name.toLowerCase().endsWith(e))) results.push(full);
+      }
+    } catch {}
+  };
+  walk(dir);
+  return results;
+}
+
+function safeStat(file: string) {
+  try {
+    return fs.statSync(file);
+  } catch {
+    return null;
+  }
+}
+
+function buildArtifactKey(file: string, size: number, mtimeMs: number) {
+  return `${artifactType(file)}:${path.basename(file)}:${size}:${mtimeMs}`;
+}
+
+function readUploadedArtifactManifest(manifestPath: string): Set<string> {
+  try {
+    if (!fs.existsSync(manifestPath)) return new Set<string>();
+    const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    return new Set<string>(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set<string>();
+  }
+}
+
+function writeUploadedArtifactManifest(manifestPath: string, uploadedArtifacts: Set<string>) {
+  try {
+    fs.writeFileSync(manifestPath, JSON.stringify(Array.from(uploadedArtifacts)), 'utf-8');
+  } catch {}
+}
+
+async function uploadArtifactFile(apiBase: string, execId: string, file: string, sequence: number, emitLog: (l: string) => void) {
+  const type = artifactType(file);
+  const filename = `${type}_${sequence}_${path.basename(file)}`;
+  const stat = safeStat(file);
+  const form = new FormData();
+  form.append('file', fs.createReadStream(file), { filename });
+  form.append('type', type);
+  form.append('timestamp_ms', String(Math.round(stat?.mtimeMs || Date.now())));
+  await axios.post(`${apiBase}/api/executions/${execId}/artifacts`, form, {
+    headers: { ...form.getHeaders(), 'X-Agent-Token': AGENT_TOKEN },
+    maxBodyLength: Infinity,
+  });
+  emitLog(`[goState Agent] Artefato enviado: ${filename} (${type})\n`);
+}
+
+function artifactType(file: string): string {
+  const lower = file.toLowerCase();
+  if (lower.endsWith('.webm') || lower.endsWith('.mp4')) return 'video';
+  if (lower.endsWith('.zip')) return 'trace';
+  if (lower.endsWith('.html')) return 'html_report';
+  if (lower.endsWith('.json')) return 'json_report';
+  return 'screenshot';
+}
+
+/**
+ * Whitelist filter — only our injected step-N.png screenshots and videos are
+ * ever uploaded to the backend.  Everything else (Playwright trace .jpeg frames,
+ * test-failed-*.png, html-report assets, etc.) stays on disk only.
+ */
+function isAllowedArtifact(file: string): boolean {
+  const lower = file.toLowerCase();
+  const base = path.basename(lower);
+  // Allow videos
+  if (lower.endsWith('.webm') || lower.endsWith('.mp4')) return true;
+  // Allow only our named screenshots: step-N.png or manual-screenshot*.png
+  if (lower.endsWith('.png')) {
+    return /^step-\d+\.png$/.test(base) || base.startsWith('manual-screenshot');
+  }
+  return false;
+}
+
 async function uploadArtifacts(apiBase: string, execId: string, workDir: string, emitLog: (l: string) => void) {
-  const findFiles = (dir: string, exts: string[]): string[] => {
-    if (!fs.existsSync(dir)) return [];
-    const results: string[] = [];
-    const walk = (d: string) => {
-      try {
-        for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
-          const full = path.join(d, entry.name);
-          if (entry.isDirectory()) walk(full);
-          else if (exts.some(e => entry.name.endsWith(e))) results.push(full);
-        }
-      } catch {}
-    };
-    walk(dir);
-    return results;
-  };
-
-  // Playwright puts artifacts in test-results/<test-name>/ subdirs
   const testResultsDir = path.join(workDir, 'test-results');
-  const videoFiles = findFiles(testResultsDir, ['.webm', '.mp4']);
-  const screenshotFiles = findFiles(testResultsDir, ['.png', '.jpg', '.jpeg']);
+  const uploadedManifestPath = path.join(workDir, '.uploaded-artifacts.json');
+  const uploadedArtifacts = readUploadedArtifactManifest(uploadedManifestPath);
 
-  const typeMap = (f: string): string => {
-    if (f.endsWith('.webm') || f.endsWith('.mp4')) return 'video';
-    return 'screenshot';
-  };
+  // Only scan for .png and video — then whitelist-filter to step-N.png + videos
+  const allFiles = findArtifactFiles(testResultsDir, ['.webm', '.mp4', '.png']);
+  const allowed = allFiles.filter(f => isAllowedArtifact(f));
 
   let uploaded = 0;
-  for (const file of [...videoFiles, ...screenshotFiles]) {
+  for (const file of allowed) {
     try {
-      const type = typeMap(file);
-      const filename = `${type}_${uploaded}_${path.basename(file)}`;
-      const form = new FormData();
-      form.append('file', fs.createReadStream(file), { filename });
-      form.append('type', type);
-      await axios.post(`${apiBase}/api/executions/${execId}/artifacts`, form, {
-        headers: { ...form.getHeaders(), 'X-Agent-Token': AGENT_TOKEN },
-        maxBodyLength: Infinity,
-      });
-      emitLog(`[goState Agent] Artefato enviado: ${filename} (${type})\n`);
+      const stat = safeStat(file);
+      if (!stat) continue;
+      const artifactKey = buildArtifactKey(file, stat.size, stat.mtimeMs);
+      if (uploadedArtifacts.has(artifactKey)) continue;
+      await uploadArtifactFile(apiBase, execId, file, uploaded, emitLog);
+      uploadedArtifacts.add(artifactKey);
+      writeUploadedArtifactManifest(uploadedManifestPath, uploadedArtifacts);
       uploaded++;
     } catch (e: any) {
       emitLog(`[goState Agent] Falha ao enviar artefato ${path.basename(file)}: ${e.message}\n`);
@@ -516,6 +821,7 @@ async function uploadArtifacts(apiBase: string, execId: string, workDir: string,
 
   if (uploaded === 0) emitLog('[goState Agent] Nenhum artefato encontrado para enviar\n');
 }
+
 
 async function patchStatus(
   apiBase: string,

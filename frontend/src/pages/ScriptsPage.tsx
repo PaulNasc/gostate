@@ -37,6 +37,7 @@ export default function ScriptsPage() {
   const [runBrowser, setRunBrowser] = useState('chromium');
   const [editingFilename, setEditingFilename] = useState(false);
   const [filenameVal, setFilenameVal] = useState('');
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showRecorder, setShowRecorder] = useState(false);
   const [recorderUrl, setRecorderUrl] = useState('https://');
   const [recorderProject, setRecorderProject] = useState('');
@@ -108,11 +109,12 @@ export default function ScriptsPage() {
     mutationFn: (id: string) => scriptsApi.remove(id),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['scripts'] });
+      setShowDeleteModal(false);
       setSelected(null);
       setEditorContent('');
       toast.success('Script excluído');
     },
-    onError: () => toast.error('Erro ao excluir script'),
+    onError: (error: any) => toast.error(error?.response?.data?.error || 'Erro ao excluir script'),
   });
 
   const runScript = useMutation({
@@ -154,6 +156,11 @@ export default function ScriptsPage() {
   function handleSave() {
     if (!selected) return;
     updateScript.mutate({ id: selected.id, data: { content: editorContent } });
+  }
+
+  function handleDeleteScript() {
+    if (!selected) return;
+    deleteScript.mutate(selected.id);
   }
 
   function handleCreate() {
@@ -235,6 +242,44 @@ export default function ScriptsPage() {
                 onClick={confirmDiscard}
               >
                 Descartar e abrir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showDeleteModal && selected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="rounded-xl border p-6 w-full max-w-md shadow-2xl" style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-red-500/10 border border-red-500/20 flex-shrink-0">
+                <Trash2 className="w-4 h-4 text-red-400" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold" style={{ color: 'var(--text)' }}>Excluir script</h3>
+                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Deseja excluir <span className="font-mono" style={{ color: 'var(--text)' }}>{selected.filename}</span>?
+                </p>
+                <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
+                  O histórico de execuções será preservado, mas o script deixará de aparecer na lista.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end">
+              <button
+                className="px-4 py-2 rounded-lg text-sm font-medium border transition-colors"
+                style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                onClick={() => setShowDeleteModal(false)}
+                disabled={deleteScript.isPending}
+              >
+                Cancelar
+              </button>
+              <button
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30 hover:bg-red-500/30 transition-colors flex items-center gap-2"
+                onClick={handleDeleteScript}
+                disabled={deleteScript.isPending}
+              >
+                {deleteScript.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                Excluir
               </button>
             </div>
           </div>
@@ -353,7 +398,7 @@ export default function ScriptsPage() {
               </button>
               <button
                 className="p-1.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                onClick={() => { if (confirm('Excluir este script?')) deleteScript.mutate(selected.id); }}
+                onClick={() => setShowDeleteModal(true)}
                 title="Excluir script"
               >
                 <Trash2 className="w-3.5 h-3.5" />

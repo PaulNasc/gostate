@@ -1,10 +1,12 @@
 import { Server as HttpServer } from 'http';
 import { Server as SocketServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { JWT_SECRET } from '../shared/middleware/auth';
 import { getDb } from '../db/schema';
 import { fireWebhooksFromGateway } from '../modules/executions/executions.routes';
 import { parseJSON } from '../shared/utils';
+import { appendExecLog } from '../shared/exec-logs';
 
 let io: SocketServer;
 
@@ -21,7 +23,8 @@ export function initSocket(server: HttpServer): SocketServer {
 
     if (agentToken) {
       const db = getDb();
-      const agent = db.prepare('SELECT * FROM agents WHERE token = ?').get(agentToken) as any;
+      const hash = crypto.createHash('sha256').update(agentToken).digest('hex');
+      const agent = db.prepare('SELECT id, name FROM agents WHERE token_hash = ?').get(hash) as any;
       if (!agent) { next(new Error('Token de agente inválido')); return; }
       (socket as any).agentId = agent.id;
       (socket as any).agentName = agent.name;
@@ -114,14 +117,14 @@ export function initSocket(server: HttpServer): SocketServer {
         if (current && current.status !== 'offline') {
           console.log(`[Socket] Agente ${agentName} sem heartbeat — marcando offline`);
           db.prepare('UPDATE agents SET status = ? WHERE id = ?').run('offline', agentId);
-          db.prepare("UPDATE executions SET status = 'error', logs = logs || '\n[AGENTE TIMEOUT]' WHERE agent_id = ? AND status IN ('running','queued')").run(agentId);
+          db.prepare("UPDATE executions SET status = 'error', logs = logs || '\n[AGENTE TIMEOUT]' WHERE agent_id = ? AND status IN ('running','paused','queued')").run(agentId);
           io.emit('agent:offline', { agentId, agentName });
           io.emit('exec:update', { agentId });
         }
       }
 
       socket.on('agent:heartbeat', () => {
-        db.prepare("UPDATE agents SET last_heartbeat = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?").run(agentId);
+          db.prepare("UPDATE agents SET last_heartbeat = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?").run(agentId);
         clearTimeout(heartbeatTimer);
         heartbeatTimer = setTimeout(() => markOffline(), 45000);
       });
@@ -129,10 +132,42 @@ export function initSocket(server: HttpServer): SocketServer {
       socket.on('exec:log', (data: { execId: string; line: string }) => {
         // Strip ANSI escape codes before storing
         const cleanLine = data.line.replace(/\x1B\[[0-9;]*[mGKHFABCDsuJn]|\x1B\([A-Z]|\x1B=/g, '');
-        const exec = db.prepare('SELECT logs FROM executions WHERE id = ?').get(data.execId) as any;
-        const newLogs = (exec?.logs || '') + cleanLine;
-        db.prepare('UPDATE executions SET logs = ? WHERE id = ?').run(newLogs, data.execId);
+        appendExecLog(data.execId, cleanLine);
         io.emit('exec:log', { ...data, line: cleanLine });
+      });
+
+      // Live step events from agent — relay to frontend and save to DB
+      socket.on('exec:step', (data: { execId: string; event: string; stepIndex?: number; name?: string; status?: string; duration?: number; error?: string; timestamp?: number }) => {
+        // Relay to all frontend clients
+        io.emit('exec:step', data);
+
+        // Save live step state to DB (deterministic ID to avoid duplicates)
+        if ((data.event === 'stepBegin' || data.event === 'stepEnd') && data.execId && data.stepIndex !== undefined) {
+          try {
+            const stepId = `${data.execId}_step_${data.stepIndex}`;
+            db.prepare(`
+              INSERT OR REPLACE INTO exec_steps (id, execution_id, step_index, name, type, status, duration_ms, error_message, timestamp_ms)
+              VALUES (?, ?, ?, ?, 'action', ?, ?, ?, ?)
+            `).run(
+              stepId,
+              data.execId,
+              data.stepIndex,
+              data.name || '',
+              data.event === 'stepBegin' ? 'running' : (data.status || 'passed'),
+              data.event === 'stepBegin' ? null : (data.duration || 0),
+              data.event === 'stepBegin' ? null : (data.error || null),
+              data.timestamp || null,
+            );
+          } catch {}
+        }
+      });
+
+      // Pause/resume confirmations from agent — relay to frontend
+      socket.on('exec:paused', (data: { execId: string }) => {
+        io.emit('exec:paused', data);
+      });
+      socket.on('exec:resumed', (data: { execId: string }) => {
+        io.emit('exec:resumed', data);
       });
 
       // Fallback: agent emits status via socket when HTTP PATCH /status fails
@@ -140,7 +175,7 @@ export function initSocket(server: HttpServer): SocketServer {
       socket.on('exec:status', (data: { execId: string; status: string; logs?: string; duration_ms?: number; steps?: any[] }) => {
         try {
           const { execId, status, logs = '', duration_ms = 0, steps = [] } = data;
-          const validStatuses = ['running', 'passed', 'failed', 'error', 'cancelled'];
+          const validStatuses = ['running', 'paused', 'passed', 'failed', 'error', 'cancelled'];
           if (!execId || !validStatuses.includes(status)) return;
 
           const execution = db.prepare('SELECT id, agent_id, status FROM executions WHERE id = ?').get(execId) as any;
@@ -180,25 +215,25 @@ export function initSocket(server: HttpServer): SocketServer {
               db.prepare("UPDATE agents SET status = 'online' WHERE id = ?").run(execution.agent_id);
             }
 
-            // Fire webhooks (same as HTTP PATCH path)
-            const updatedExec = db.prepare(`
-              SELECT e.*, tc.title as tc_title,
-                COALESCE(s.project_id, su.project_id) as project_id,
-                p.name as project_name
-              FROM executions e
-              LEFT JOIN test_cases tc ON tc.id = e.test_case_id
-              LEFT JOIN suites su ON su.id = tc.suite_id
-              LEFT JOIN scripts s ON s.id = e.script_id
-              LEFT JOIN projects p ON p.id = COALESCE(s.project_id, su.project_id)
-              WHERE e.id = ?
-            `).get(execId) as any;
-            if (updatedExec) {
-              fireWebhooksFromGateway(db, status, updatedExec, !!updatedExec.schedule_id).catch((e: any) => {
-                console.error('[Socket] fireWebhooks error:', e?.message || e);
-              });
-            }
-
             io.emit('exec:finished', { id: execId, status });
+          }
+
+          // Fire webhooks on every status transition (running, passed, failed, error, etc.)
+          const updatedExec = db.prepare(`
+            SELECT e.*, tc.title as tc_title,
+              COALESCE(s.project_id, su.project_id) as project_id,
+              p.name as project_name
+            FROM executions e
+            LEFT JOIN test_cases tc ON tc.id = e.test_case_id
+            LEFT JOIN suites su ON su.id = tc.suite_id
+            LEFT JOIN scripts s ON s.id = e.script_id
+            LEFT JOIN projects p ON p.id = COALESCE(s.project_id, su.project_id)
+            WHERE e.id = ?
+          `).get(execId) as any;
+          if (updatedExec) {
+            fireWebhooksFromGateway(db, status, updatedExec, !!updatedExec.schedule_id).catch((e: any) => {
+              console.error('[Socket] fireWebhooks error:', e?.message || e);
+            });
           }
 
           io.emit('exec:update', { id: execId, status });
@@ -211,13 +246,56 @@ export function initSocket(server: HttpServer): SocketServer {
         clearTimeout(heartbeatTimer);
         console.log(`[Socket] Agente desconectado: ${agentName}`);
         db.prepare('UPDATE agents SET status = ? WHERE id = ?').run('offline', agentId);
-        db.prepare("UPDATE executions SET status = 'error', logs = logs || '\n[AGENTE DESCONECTADO]' WHERE agent_id = ? AND status IN ('running','queued')").run(agentId);
+        db.prepare("UPDATE executions SET status = 'error', logs = logs || '\n[AGENTE DESCONECTADO]' WHERE agent_id = ? AND status IN ('running','paused','queued')").run(agentId);
         io.emit('agent:offline', { agentId, agentName });
         io.emit('exec:update', { agentId });
       });
     } else {
       const user = (socket as any).user;
       console.log(`[Socket] Cliente conectado: ${user?.email}`);
+
+      socket.on('exec:watch', (execId: string) => {
+        socket.join(`exec:${execId}`);
+        // Send current script content back to the watcher
+        const db2 = getDb();
+        const execution = db2.prepare('SELECT script_id, test_case_id FROM executions WHERE id = ?').get(execId) as any;
+        if (execution?.script_id) {
+          const script = db2.prepare('SELECT content, filename FROM scripts WHERE id = ?').get(execution.script_id) as any;
+          if (script) socket.emit('exec:script', { execId, content: script.content || '', filename: script.filename || '', type: 'script' });
+        } else if (execution?.test_case_id) {
+          const tc = db2.prepare('SELECT steps, title FROM test_cases WHERE id = ?').get(execution.test_case_id) as any;
+          if (tc) socket.emit('exec:script', { execId, content: tc.steps || '[]', filename: tc.title || '', type: 'test_case' });
+        }
+      });
+
+      // Relay code patch from frontend to the agent
+      socket.on('exec:code_patch', (data: { execId: string; content: string }) => {
+        const db2 = getDb();
+        const execution = db2.prepare('SELECT agent_id FROM executions WHERE id = ?').get(data.execId) as any;
+        if (execution?.agent_id) {
+          io.to(`agent:${execution.agent_id}`).emit('exec:code_patch', data);
+        }
+      });
+
+      // Forward pause/resume commands from frontend to the agent running the execution
+      socket.on('exec:pause', (data: { execId: string }) => {
+        const db2 = getDb();
+        const execution = db2.prepare('SELECT agent_id FROM executions WHERE id = ?').get(data.execId) as any;
+        if (execution?.agent_id) {
+          io.to(`agent:${execution.agent_id}`).emit('exec:pause', { execId: data.execId });
+          db2.prepare("UPDATE executions SET status = 'paused' WHERE id = ?").run(data.execId);
+          io.emit('exec:update', { id: data.execId, status: 'paused' });
+        }
+      });
+      socket.on('exec:resume', (data: { execId: string }) => {
+        const db2 = getDb();
+        const execution = db2.prepare('SELECT agent_id FROM executions WHERE id = ?').get(data.execId) as any;
+        if (execution?.agent_id) {
+          io.to(`agent:${execution.agent_id}`).emit('exec:resume', { execId: data.execId });
+          db2.prepare("UPDATE executions SET status = 'running' WHERE id = ?").run(data.execId);
+          io.emit('exec:update', { id: data.execId, status: 'running' });
+        }
+      });
 
       socket.on('disconnect', () => {
         console.log(`[Socket] Cliente desconectado: ${user?.email}`);

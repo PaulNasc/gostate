@@ -97,10 +97,13 @@ export const executionsApi = {
   get: (id: string) => api.get(`/api/executions/${id}`),
   getLogs: (id: string) => api.get(`/api/executions/${id}/logs`),
   cancel: (id: string) => api.post(`/api/executions/${id}/cancel`),
+  addComment: (id: string, data: { content: string; step_index?: number; timestamp_ms?: number }) => api.post(`/api/executions/${id}/comments`, data),
+  addIntervention: (id: string, data: { type: string; label: string; payload?: Record<string, any>; target_step_index?: number; target_timestamp_ms?: number }) => api.post(`/api/executions/${id}/interventions`, data),
+  updateIntervention: (id: string, interventionId: string, data: { status: 'pending' | 'approved' | 'applied' | 'rejected' | 'cancelled' }) => api.patch(`/api/executions/${id}/interventions/${interventionId}`, data),
 };
 
 export const statsApi = {
-  get: () => api.get('/api/stats'),
+  get: (params?: { date_from?: string; date_to?: string }) => api.get('/api/stats', { params }),
 };
 
 export const auditApi = {

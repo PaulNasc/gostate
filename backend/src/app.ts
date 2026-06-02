@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import path from 'path';
+import rateLimit from 'express-rate-limit';
 import { errorHandler, notFound } from './shared/middleware/error';
 import { getDb } from './db/schema';
 import authRoutes from './modules/auth/auth.routes';
@@ -28,7 +29,8 @@ export function createApp() {
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: false }));
   const corsOrigin = process.env.CORS_ORIGIN || '*';
   if (corsOrigin === '*' && process.env.NODE_ENV === 'production') {
-    console.warn('[goState] WARNING: CORS_ORIGIN not set — allowing all origins (*). Set CORS_ORIGIN in production.');
+    console.error('[goState] FATAL: CORS_ORIGIN not set in production. Set CORS_ORIGIN explicitly. Refusing to start with wildcard origin.');
+    process.exit(1);
   }
   app.use(cors({
     origin: corsOrigin,
@@ -37,6 +39,17 @@ export function createApp() {
   }));
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
+
+  // Global rate limit for write operations (POST/PUT/PATCH/DELETE)
+  const globalWriteLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 100,
+    message: { error: 'Muitas requisições. Aguarde 1 minuto.' },
+    skip: (req) => req.method === 'GET' || req.method === 'OPTIONS' || req.method === 'HEAD',
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+  app.use('/api/', globalWriteLimiter);
 
   app.use('/data/artifacts', express.static(path.join(__dirname, '..', 'data', 'artifacts')));
 
@@ -81,7 +94,12 @@ export function createApp() {
   app.use('/api/me/tokens', apiTokensRoutes);
 
   app.use('/api/artifacts/:execId/:filename', (req, res) => {
-    const filePath = path.join(__dirname, '..', 'data', 'artifacts', `exec_${req.params.execId}`, req.params.filename);
+    const sanitizedFilename = path.basename(req.params.filename);
+    if (sanitizedFilename !== req.params.filename || sanitizedFilename.includes('..')) {
+      res.status(400).json({ error: 'Nome de arquivo inválido' });
+      return;
+    }
+    const filePath = path.join(__dirname, '..', 'data', 'artifacts', `exec_${req.params.execId}`, sanitizedFilename);
     res.sendFile(filePath, (err) => {
       if (err && !res.headersSent) {
         const statusCode = typeof (err as any)?.statusCode === 'number' ? (err as any).statusCode : 404;

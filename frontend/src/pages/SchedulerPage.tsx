@@ -288,7 +288,7 @@ export default function SchedulerPage() {
                 </button>
                 <button
                   type="button"
-                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${form.mode === 'plan' ? 'border-purple-500/60 bg-purple-500/10 text-purple-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${form.mode === 'plan' ? 'border-teal-500/60 bg-teal-500/10 text-teal-400' : 'border-transparent text-slate-400 hover:text-slate-200'}`}
                   style={form.mode !== 'plan' ? { borderColor: 'var(--border)' } : {}}
                   onClick={() => setForm(f => ({ ...f, mode: 'plan' }))}
                 >
@@ -410,7 +410,7 @@ export default function SchedulerPage() {
                   <td className="px-4 py-3 text-sm max-w-[160px] truncate" style={{ color: 'var(--text-muted)' }}>
                     {s.plan_name ? (
                       <span className="flex items-center gap-1">
-                        <span className="text-xs px-1 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">Plano</span>
+                        <span className="text-xs px-1 py-0.5 rounded bg-teal-500/10 text-teal-400 border border-teal-500/20">Plano</span>
                         {s.plan_name}
                       </span>
                     ) : (s.project_name || s.tc_title || '—')}

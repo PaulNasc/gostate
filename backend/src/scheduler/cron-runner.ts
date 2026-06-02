@@ -4,6 +4,7 @@ import { getIo } from '../realtime/gateway';
 import { v4 as uuidv4 } from 'uuid';
 import { dispatchToAgent } from '../shared/dispatch';
 import { parseJSON } from '../shared/utils';
+import { cleanupOldArtifacts } from './artifact-cleanup';
 
 let started = false;
 
@@ -20,7 +21,17 @@ export function startCronRunner() {
     }
   });
 
+  // Daily cleanup of old artifacts and logs (03:00 AM)
+  cron.schedule('0 3 * * *', () => {
+    try {
+      cleanupOldArtifacts();
+    } catch (err) {
+      console.error('[CRON] Erro ao limpar artefatos:', err);
+    }
+  });
+
   console.log('[CRON] Scheduler iniciado — verificando a cada minuto');
+  console.log('[CRON] Cleanup de artefatos agendado — 03:00 diariamente');
 }
 
 function runDueSchedules() {

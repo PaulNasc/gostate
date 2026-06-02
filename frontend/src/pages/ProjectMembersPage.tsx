@@ -10,7 +10,7 @@ import { formatDate } from '../lib/utils';
 const ROLES = [
   { value: 'viewer', label: 'Visualizador', icon: Eye, color: 'text-slate-400', bg: 'bg-slate-500/10 border-slate-500/20' },
   { value: 'editor', label: 'Editor', icon: Pencil, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' },
-  { value: 'admin', label: 'Admin', icon: Shield, color: 'text-violet-400', bg: 'bg-violet-500/10 border-violet-500/20' },
+  { value: 'admin', label: 'Admin', icon: Shield, color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20' },
 ] as const;
 
 function RoleBadge({ role }: { role: string }) {
@@ -74,7 +74,7 @@ export default function ProjectMembersPage() {
           </button>
           <div>
             <h1 className="text-xl font-bold flex items-center gap-2" style={{ color: 'var(--text)' }}>
-              <Users className="w-5 h-5 text-violet-400" /> Membros do Projeto
+              <Users className="w-5 h-5 text-cyan-400" /> Membros do Projeto
             </h1>
             <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
               Gerencie quem pode acessar e editar este projeto

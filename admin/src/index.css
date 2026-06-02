@@ -31,9 +31,35 @@
   .input::placeholder { color: #64748b; }
   .btn-primary {
     @apply rounded px-4 py-2 text-sm font-medium text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed;
-    background: #3b82f6;
+    background: #8b5cf6;
   }
-  .btn-primary:hover:not(:disabled) { background: #2563eb; }
+  .btn-primary:hover:not(:disabled) { background: #7c3aed; }
+  [data-theme="dark"] .badge-error    { color: #fb923c; }
+  [data-theme="dark"] .badge-cancelled{ color: #94a3b8; }
+}
+
+@layer utilities {
+  .fluid-h1 { font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.1; letter-spacing: -0.02em; }
+  .fluid-h2 { font-size: clamp(1.5rem, 4vw, 2.5rem); line-height: 1.2; letter-spacing: -0.01em; }
+  .fluid-p { font-size: clamp(1rem, 2vw, 1.125rem); line-height: 1.6; }
+  
+  .page-transition {
+    animation: fadeSlideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  
+  .safe-form {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2310b981' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='11' width='18' height='11' rx='2' ry='2'%3E%3C/rect%3E%3Cpath d='M7 11V7a5 5 0 0 1 10 0v4'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: 98% 50%;
+  }
+
+  @keyframes fadeSlideUp {
+    0% { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+}
+
+@layer components {
   .btn-ghost {
     @apply rounded px-4 py-2 text-sm font-medium transition-all;
     color: #94a3b8;
@@ -50,6 +76,6 @@
   .badge-online { background: rgba(16,185,129,0.15); color: #34d399; }
   .badge-offline { background: rgba(100,116,139,0.15); color: #94a3b8; }
   .badge-busy { background: rgba(234,179,8,0.15); color: #facc15; }
-  .badge-admin { background: rgba(139,92,246,0.15); color: #a78bfa; }
+  .badge-admin { background: rgba(139,92,246,0.15); color: #22d3ee; }
   .badge-tester { background: rgba(59,130,246,0.15); color: #60a5fa; }
 }

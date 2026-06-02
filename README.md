@@ -1,149 +1,89 @@
 # goState
+> Plataforma escalável para orquestração, execução e acompanhamento de testes automatizados E2E com Playwright.
 
-goState é uma plataforma para organizar, disparar e acompanhar testes automatizados com Playwright de forma mais simples. A proposta é centralizar o fluxo inteiro em um só lugar: projetos, casos de teste, scripts, execuções, agentes remotos, integrações e histórico.
+goState centraliza o fluxo de automação em um só lugar: projetos, casos de teste, scripts, execuções, agentes remotos, integrações e histórico. Foi desenhado com uma arquitetura moderna e baseada em eventos, permitindo executar testes assíncronos e em larga escala.
 
-Na prática, você pode montar testes visualmente ou escrever scripts, enviar a execução para agentes conectados e acompanhar tudo em tempo real — com logs, artefatos, métricas e notificações. É um projeto pensado para times que querem mais controle sobre automação sem perder visibilidade do que está acontecendo.
+## Quick Start (Docker - Produção Mínima Recomendada)
 
----
+A maneira mais segura e rápida de rodar o ambiente completo.
 
-## Estrutura
-
-```
-gostate/
-├── backend/    Express + SQLite + Socket.IO           (porta 4000)
-├── frontend/   React + Vite + TailwindCSS             (porta 5173)
-├── admin/      Painel administrativo de agentes       (porta 4001)
-└── agent/      Agente standalone de execução remota
-```
-
-O monorepo tem um `package.json` raiz com scripts para subir tudo de uma vez.
-
----
-
-## Como rodar
-
-### 1. Instalar dependências
-
+1. **Clone o repositório** e entre na pasta:
 ```bash
-npm run install:all
+git clone https://github.com/seu-user/gostate.git
+cd gostate
 ```
 
-### 2. Configurar o backend
-
-Crie o arquivo `backend/.env` com base no exemplo abaixo:
-
+2. **Crie os arquivos de ambiente** (Obrigatório)
+Crie um arquivo `.env` na raiz (veja a seção [Configuração](#configuração) para mais detalhes):
 ```env
-PORT=4000
-JWT_SECRET=troque-por-algo-seguro-em-producao
-DB_PATH=./data/gostate.db
-ARTIFACTS_PATH=./data/artifacts
+# URL externa (browser chamando API)
+VITE_API_BASE=http://localhost:4000
+# URL interna (agente dentro do docker)
+INTERNAL_BACKEND_URL=http://backend:4000
+# CORS
 CORS_ORIGIN=http://localhost:5173
-ADMIN_ORIGIN=http://localhost:4001
+
+DEFAULT_AGENT_TOKEN=gostate-dev-agent-token-local-compose-2024
 ```
 
-> O banco SQLite é criado automaticamente na primeira execução, junto com um usuário admin padrão.
-
-### 3. Subir o sistema
-
+3. **Suba o sistema:**
 ```bash
-# Backend + Frontend (o mais comum durante desenvolvimento)
-npm run dev
-
-# Backend + Frontend + Painel Admin
-npm run dev:all
-
-# Só um serviço específico
-npm run dev:backend
-npm run dev:frontend
-npm run dev:admin
+docker compose up -d --build
 ```
 
-### 4. Acesso inicial
+O banco SQLite será criado automaticamente e semeado com um administrador e um agente local padrão.
+
+## Acesso Inicial
 
 | URL | O que é |
 |-----|---------|
-| http://localhost:5173 | Frontend principal |
-| http://localhost:4001 | Admin Panel (gerenciar agentes) |
-| http://localhost:4000 | API backend |
+| http://localhost:5173 | Frontend principal (Gerenciador de Testes) |
+| http://localhost:4001 | Painel Administrativo (Gerenciador de Agentes e Configurações) |
+| http://localhost:4000 | API Backend |
 
-**Credenciais padrão:** `admin@gostate.dev` / `admin123`
+**Credenciais padrão de Admin:** 
+- Email: `admin@gostate.dev` 
+- Senha: `Admin@123`
 
-> Troque a senha após o primeiro login.
+## Features
 
----
+- **Construtor Visual e Scripting:** Crie testes arrastando passos (Clicks, Gotos) ou digitando diretamente scripts Playwright.
+- **Isolamento de Agentes:** Rode os testes de forma segura em agentes remotos conectados via WebSockets (Socket.IO).
+- **Log Streaming em Tempo Real:** Acompanhe a execução do teste como se estivesse na máquina hospedeira.
+- **Artefatos Automáticos:** Capturas de tela e vídeos são gravados por execução.
+- **Agendamentos (Cron):** Dispare execuções automaticamente e em paralelo (escalável até N agentes).
 
-## Configurar um agente
+## Configuração
 
-Os agentes são processos que ficam conectados ao backend esperando execuções. Você pode rodar quantos quiser, em máquinas diferentes.
+Principais variáveis de ambiente no arquivo `.env` global:
 
-**Pelo Admin Panel (recomendado):**
-1. Acesse http://localhost:4001
-2. Crie um novo agente
-3. Clique em "Configurar" → "Gerar Comando de Instalação"
-4. Copie e rode o comando no servidor onde o agente vai rodar
+| Variável | Descrição | Padrão Recomendado |
+|----------|-------------|---------|
+| `VITE_API_BASE` | URL do backend para acesso via Browser | `http://localhost:4000` |
+| `INTERNAL_BACKEND_URL` | URL do backend para a rede do Docker (usada pelo Agent) | `http://backend:4000` |
+| `CORS_ORIGIN` | Domínio do frontend para CORS | `http://localhost:5173` |
+| `ADMIN_EMAIL` | Email do administrador padrão | `admin@gostate.dev` |
+| `ADMIN_PASSWORD` | Senha do administrador padrão | `Admin@123` |
+| `JWT_SECRET` | Chave de segurança para tokens (OBRIGATÓRIO EM PROD) | — |
+| `ARTIFACT_RETENTION_DAYS` | Dias antes de deletar logs e vídeos | `30` |
 
-**Manual via variáveis de ambiente:**
+## Estrutura do Monorepo
 
-```bash
-cd agent
-AGENT_TOKEN=seu-token BACKEND_URL=http://localhost:4000 npm run dev
+```
+gostate/
+├── backend/    Express + better-sqlite3 + Socket.IO   (motor, API)
+├── frontend/   React + Vite + TailwindCSS             (usuário)
+├── admin/      React + Vite + TailwindCSS             (sistema)
+├── agent/      Node.js + Playwright                   (executor isolado)
+├── docs/       Documentações (API, Arquitetura)
+└── data/       Volume persistente do Docker (Banco de dados e artefatos)
 ```
 
-**Com Docker Compose:**
+## Documentation
 
-```bash
-# Edite agent/docker-compose.yml com o AGENT_TOKEN correto
-cd agent
-docker-compose up -d
-```
+- [API Reference](./docs/api.md)
+- [Architecture & Flow](./docs/architecture.md)
 
-Para controlar quantas execuções rodam em paralelo por agente:
+## License
 
-```env
-AGENT_MAX_CONCURRENT=3   # padrão: 3
-```
-
----
-
-## Fluxo básico de uso
-
-1. Crie um **Projeto** no frontend
-2. Dentro do projeto, crie uma **Suite** e adicione **Casos de Teste**
-3. Monte os steps do teste no construtor visual, ou escreva um script Playwright direto
-4. Certifique-se de que tem pelo menos um agente online
-5. Clique em **Executar** — escolha o agente, o browser e dispare
-6. Acompanhe os logs em tempo real na página de Execuções
-
-Para automação, configure agendamentos na página de **Agendamentos** (suporta minutos fixos e expressões cron completas).
-
----
-
-## Variáveis de ambiente — resumo
-
-### Backend (`backend/.env`)
-
-| Variável | Padrão | Descrição |
-|---|---|---|
-| `PORT` | `4000` | Porta da API |
-| `JWT_SECRET` | — | Segredo JWT (obrigatório em produção) |
-| `DB_PATH` | `./data/gostate.db` | Banco SQLite |
-| `ARTIFACTS_PATH` | `./data/artifacts` | Vídeos e screenshots |
-| `CORS_ORIGIN` | `http://localhost:5173` | Origem do frontend |
-| `ADMIN_ORIGIN` | `http://localhost:4001` | Origem do admin panel |
-
-### Agent (`agent/.env`)
-
-| Variável | Descrição |
-|---|---|
-| `BACKEND_URL` | URL do backend (ex: `http://meu-servidor:4000`) |
-| `AGENT_TOKEN` | Token gerado no Admin Panel |
-| `AGENT_MAX_CONCURRENT` | Execuções paralelas (padrão: 3) |
-
----
-
-## Stack
-
-- **Frontend:** React 18, TypeScript, Vite, TailwindCSS, TanStack Query, Recharts, Socket.IO client
-- **Backend:** Express 5, TypeScript, SQLite (better-sqlite3), JWT, Socket.IO, Zod, Multer
-- **Agente:** Node.js, TypeScript, @playwright/test, Socket.IO client, axios
-- **Admin:** React 18, TypeScript, Vite, TailwindCSS
+MIT

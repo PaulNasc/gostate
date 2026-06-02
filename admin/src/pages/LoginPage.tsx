@@ -33,7 +33,7 @@ export default function LoginPage({ onLogin }: { onLogin: () => void }) {
     <div className="min-h-screen flex items-center justify-center p-4" style={{ background: '#0a0d14' }}>
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4" style={{ background: '#7c3aed' }}>
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4" style={{ background: '#0891b2' }}>
             <Shield className="w-6 h-6 text-white" />
           </div>
           <h1 className="text-xl font-bold text-white">goState Admin</h1>

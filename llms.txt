@@ -1,0 +1,16 @@
+# goState
+> Plataforma escalável para orquestração, execução e acompanhamento de testes automatizados E2E com Playwright.
+
+## Core Files
+- `backend/src/server.ts`: Inicialização da API Express e servidor WebSocket.
+- `backend/src/shared/dispatch.ts`: Motor principal responsável por alocar os testes no agente via WebSocket (`io.to('agent:id')`).
+- `backend/src/db/schema.ts`: Estrutura do banco de dados SQLite (`better-sqlite3`) e mecanismo de migrações automáticas.
+- `agent/src/agent.ts`: Lógica do agente executor. Conecta no Backend via Socket.IO, gera script do Playwright a partir dos passos e devolve os logs em tempo real.
+- `docker-compose.yml`: Topologia final de implantação em produção.
+- `.env`: Segredos globais do sistema e roteamento CORS.
+
+## Key Concepts
+- **Execution Dispatch**: Execuções são despachadas ativamente (`exec:dispatch`) apenas quando um Agente tem slots disponíveis (controlado por Semaphore `AGENT_MAX_CONCURRENT`).
+- **Log Streaming**: Os logs do Playwright sobem via WebSocket (`agent.log`) e são persistidos fisicamente em `.log` no filesystem, evitando gargalos de I/O no SQLite (Database locked errors).
+- **Graceful Degradation**: Falhas em migrações adicionais não param o Boot da aplicação, registram erro mas iniciam o banco com os serviços críticos disponíveis.
+- **Isolamento Total**: Todos os `secrets` e senhas/tokens são armazenados hasheados via `bcrypt` e `crypto.sha256`.

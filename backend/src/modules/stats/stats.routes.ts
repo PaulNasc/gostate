@@ -5,8 +5,29 @@ import { authenticate, AuthRequest } from '../../shared/middleware/auth';
 const router = Router();
 router.use(authenticate);
 
+function normalizeDateInput(value: unknown, endOfDay = false) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  return `${value} ${endOfDay ? '23:59:59' : '00:00:00'}`;
+}
+
 router.get('/', (req: AuthRequest, res: Response) => {
   const db = getDb();
+
+  const dateFrom = normalizeDateInput(req.query.date_from);
+  const dateTo = normalizeDateInput(req.query.date_to, true);
+  const rangeWhere = [
+    dateFrom ? 'created_at >= @dateFrom' : '',
+    dateTo ? 'created_at <= @dateTo' : '',
+  ].filter(Boolean);
+  const rangeClause = rangeWhere.length ? `WHERE ${rangeWhere.join(' AND ')}` : '';
+  const rangeParams = { dateFrom, dateTo };
+
+  const boundedRangeWhere = [
+    "e.status IN ('passed', 'failed', 'error')",
+    dateFrom ? 'e.created_at >= @dateFrom' : '',
+    dateTo ? 'e.created_at <= @dateTo' : '',
+  ].filter(Boolean);
+  const boundedRangeClause = `WHERE ${boundedRangeWhere.join(' AND ')}`;
 
   const totalProjects = (db.prepare('SELECT COUNT(*) as c FROM projects').get() as any).c;
   const totalSuites = (db.prepare('SELECT COUNT(*) as c FROM suites').get() as any).c;
@@ -24,7 +45,8 @@ router.get('/', (req: AuthRequest, res: Response) => {
       COALESCE(SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END), 0) as cancelled,
       COALESCE(AVG(CASE WHEN duration_ms IS NOT NULL THEN duration_ms END), 0) as avg_duration_ms
     FROM executions
-  `).get() as any;
+    ${rangeClause}
+  `).get(rangeParams) as any;
 
   const passRate = execTotals.total > 0
     ? Math.round((execTotals.passed / execTotals.total) * 100)
@@ -37,37 +59,50 @@ router.get('/', (req: AuthRequest, res: Response) => {
       SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END) as passed,
       SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed
     FROM executions
-    WHERE created_at >= datetime('now', '-7 days')
+    ${rangeClause || "WHERE created_at >= datetime('now', '-7 days')"}
     GROUP BY date(created_at)
     ORDER BY day ASC
-  `).all() as any[];
+  `).all(rangeParams) as any[];
+
+  const recentDateConditions = [
+    dateFrom ? 'e.created_at >= @dateFrom' : '',
+    dateTo ? 'e.created_at <= @dateTo' : '',
+  ].filter(Boolean);
+  const recentWhereClause = recentDateConditions.length ? `WHERE ${recentDateConditions.join(' AND ')}` : '';
 
   const recentExecs = db.prepare(`
-    SELECT e.id, e.status, e.created_at, e.duration_ms,
+    SELECT 
+      e.id, e.status, e.created_at, e.duration_ms, e.started_at, e.finished_at,
       tc.title as tc_title,
       s.filename as script_filename,
       a.name as agent_name,
-      p.name as project_name
+      COALESCE(p2.name, p3.name) as project_name
     FROM executions e
     LEFT JOIN test_cases tc ON tc.id = e.test_case_id
     LEFT JOIN scripts s ON s.id = e.script_id
     LEFT JOIN agents a ON a.id = e.agent_id
     LEFT JOIN suites su ON su.id = tc.suite_id
-    LEFT JOIN projects p ON p.id = su.project_id
+    LEFT JOIN projects p2 ON p2.id = su.project_id
+    LEFT JOIN projects p3 ON p3.id = s.project_id
+    ${recentWhereClause}
     ORDER BY e.created_at DESC
     LIMIT 15
-  `).all();
+  `).all(rangeParams);
 
   // --- Flakiness: test cases with alternating pass/fail in last 20 executions ---
+  const flakyDateConds = [
+    'e.test_case_id IS NOT NULL',
+    "e.status IN ('passed', 'failed', 'error')",
+    dateFrom ? 'e.created_at >= @dateFrom' : (!dateTo ? "e.created_at >= datetime('now', '-30 days')" : ''),
+    dateTo ? 'e.created_at <= @dateTo' : '',
+  ].filter(Boolean);
   const tcWithExecs = db.prepare(`
     SELECT e.test_case_id, tc.title as tc_title, e.status
     FROM executions e
     JOIN test_cases tc ON tc.id = e.test_case_id
-    WHERE e.test_case_id IS NOT NULL
-      AND e.status IN ('passed', 'failed', 'error')
-      AND e.created_at >= datetime('now', '-30 days')
+    WHERE ${flakyDateConds.join(' AND ')}
     ORDER BY e.test_case_id, e.created_at DESC
-  `).all() as any[];
+  `).all(rangeParams) as any[];
 
   const byTc: Record<string, { title: string; statuses: number[] }> = {};
   for (const row of tcWithExecs) {
@@ -103,15 +138,14 @@ router.get('/', (req: AuthRequest, res: Response) => {
     LEFT JOIN suites su ON su.id = tc.suite_id
     LEFT JOIN scripts s ON s.id = e.script_id
     LEFT JOIN projects p ON p.id = COALESCE(s.project_id, su.project_id)
-    WHERE e.status IN ('passed', 'failed', 'error')
+    ${boundedRangeClause}
       AND e.duration_ms IS NOT NULL AND e.duration_ms > 0
-      AND e.created_at >= datetime('now', '-7 days')
       AND p.id IS NOT NULL
     GROUP BY p.id
     HAVING COUNT(*) >= 2
     ORDER BY avg_duration_ms DESC
     LIMIT 5
-  `).all() as any[];
+  `).all(rangeParams) as any[];
 
   const avgByProject = avgByProjectRows.map((r: any) => ({
     id: r.project_id,
@@ -139,6 +173,10 @@ router.get('/', (req: AuthRequest, res: Response) => {
     recent: recentExecs,
     flaky_tcs: flakyTcs,
     avg_by_project: avgByProject,
+    range: {
+      date_from: dateFrom,
+      date_to: dateTo,
+    },
   });
 });
 

@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+.env
+.env.*
+*.log
+data
+*.db
+*.db-shm
+*.db-wal
+.vscode
+.idea
+*.tsbuildinfo
