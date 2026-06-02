@@ -276,6 +276,9 @@ export function compileGraphToPlaywright(graph: any, envVars: Record<string, str
       sc += `${indent}  throw new Error(${JSON.stringify(data.message || 'Fluxo interrompido via Stop and Fail')});\n`;
       sc += `${indent}});\n`;
     }
+    else {
+      throw new Error(`Unsupported node type: ${node.type}`);
+    }
 
     if (node.type !== 'ifCondition') {
       const nextEdge = edges.find((e: any) => e.source === nodeId);

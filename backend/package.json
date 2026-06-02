@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run"
   },
   "dependencies": {
     "@types/nodemailer": "^7.0.11",
@@ -35,6 +36,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/uuid": "^9.0.8",
     "tsx": "^4.7.1",
-    "typescript": "^5.4.2"
+    "typescript": "^5.4.2",
+    "vitest": "^4.1.8"
   }
 }
