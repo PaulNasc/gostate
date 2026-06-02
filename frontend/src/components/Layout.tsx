@@ -208,23 +208,21 @@ export default function Layout() {
       {/* Sidebar */}
       <aside
         className={cn(
-          'flex flex-col h-full border-r transition-all duration-300 ease-in-out flex-shrink-0',
+          'flex flex-col h-full border-r transition-all duration-300 ease-in-out flex-shrink-0 bg-zinc-950 border-zinc-800',
           collapsed ? 'w-14' : 'w-56'
         )}
-        style={{ background: 'var(--surface-1)', borderColor: 'var(--border)' }}
       >
         {/* Logo */}
-        <div className={cn('flex items-center h-14 border-b flex-shrink-0 px-3', collapsed ? 'justify-center' : 'gap-2')} style={{ borderColor: 'var(--border)' }}>
+        <div className={cn('flex items-center h-14 border-b flex-shrink-0 px-3 border-zinc-800', collapsed ? 'justify-center' : 'gap-2')}>
           <GoStateIcon size={32} className="flex-shrink-0" />
           {!collapsed && (
-            <span className="text-base tracking-tight flex-1 truncate" style={{ color: 'var(--text)' }}>
-              go<span className="font-bold">State</span>
+            <span className="text-base tracking-tight flex-1 truncate text-zinc-100">
+              go<span className="font-bold text-rose-500">State</span>
             </span>
           )}
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="p-1 rounded transition-colors hover:bg-black/10 flex-shrink-0"
-            style={{ color: 'var(--text-muted)' }}
+            className="p-1 rounded transition-colors hover:bg-zinc-800/50 flex-shrink-0 text-zinc-400 hover:text-zinc-200"
           >
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>
@@ -244,12 +242,8 @@ export default function Layout() {
                     className={({ isActive }) =>
                       cn(
                         'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group justify-center px-0',
-                        !isActive && 'hover:bg-black/5'
+                        isActive ? 'bg-rose-500/15 text-white font-medium' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
                       )
-                    }
-                    style={({ isActive }) => isActive
-                      ? { background: 'var(--sidebar-active-bg)', color: 'var(--sidebar-active-text)', fontWeight: 500 }
-                      : { color: 'var(--text-muted)' }
                     }
                     title={sub.label}
                   >
@@ -266,10 +260,10 @@ export default function Layout() {
                   <button
                     onClick={toggleAutomation}
                     className={cn(
-                      'w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group hover:bg-black/5',
-                      isAnySubActive && 'font-medium'
+                      'w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group hover:bg-zinc-800/40 text-zinc-400 hover:text-zinc-200',
+                      isAnySubActive && 'font-medium text-zinc-200'
                     )}
-                    style={{ color: isAnySubActive ? 'var(--text)' : 'var(--text-muted)', background: 'transparent', border: 'none', cursor: 'pointer', outline: 'none' }}
+                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', outline: 'none' }}
                   >
                     <div className="flex items-center gap-3">
                       <span className="flex-shrink-0">
@@ -279,13 +273,13 @@ export default function Layout() {
                     </div>
                     <ChevronRight
                       className={cn(
-                        'w-3.5 h-3.5 transition-transform duration-200',
-                        automationOpen && 'transform rotate-90'
+                        'w-3.5 h-3.5 transition-transform duration-200 text-zinc-500',
+                        automationOpen && 'transform rotate-90 text-zinc-300'
                       )}
                     />
                   </button>
                   {automationOpen && (
-                    <div className="pl-6 space-y-0.5 border-l ml-5" style={{ borderColor: 'var(--border)' }}>
+                    <div className="pl-6 space-y-0.5 border-l ml-5 border-zinc-800" style={{ borderColor: '#27272a' }}>
                       {item.submenu.map((sub) => (
                         <NavLink
                           key={sub.to}
@@ -293,12 +287,8 @@ export default function Layout() {
                           className={({ isActive }) =>
                             cn(
                               'flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs transition-all duration-150 group',
-                              !isActive && 'hover:bg-black/5'
+                              isActive ? 'bg-rose-500/15 text-white font-medium' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
                             )
-                          }
-                          style={({ isActive }) => isActive
-                            ? { background: 'var(--sidebar-active-bg)', color: 'var(--sidebar-active-text)', fontWeight: 500 }
-                            : { color: 'var(--text-muted)' }
                           }
                         >
                           {({ isActive }) => (
@@ -323,12 +313,8 @@ export default function Layout() {
                   cn(
                     'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group',
                     collapsed && 'justify-center px-0',
-                    !isActive && 'hover:bg-black/5'
+                    isActive ? 'bg-rose-500/15 text-white font-medium' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
                   )
-                }
-                style={({ isActive }) => isActive
-                  ? { background: 'var(--sidebar-active-bg)', color: 'var(--sidebar-active-text)', fontWeight: 500 }
-                  : { color: 'var(--text-muted)' }
                 }
                 title={collapsed ? item.label : undefined}
               >
@@ -344,23 +330,22 @@ export default function Layout() {
         </nav>
 
         {/* User */}
-        <div className="p-2 border-t" style={{ borderColor: 'var(--border)' }}>
+        <div className="p-2 border-t border-zinc-800">
           {!collapsed && (
             <div className="px-3 py-2 mb-1">
-              <p className="text-xs font-semibold truncate" style={{ color: 'var(--text)' }}>
+              <p className="text-xs font-semibold truncate text-zinc-200">
                 {user?.role === 'admin' ? 'Administrador' : user?.role === 'tester' ? 'Testador' : user?.role}
               </p>
-              <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user?.email}</p>
+              <p className="text-[10px] truncate text-zinc-500 mt-0.5">{user?.email}</p>
             </div>
           )}
           <div className={cn('flex gap-1', collapsed ? 'flex-col items-center' : 'flex-col')}>
             <button
               onClick={toggleTheme}
               className={cn(
-                'flex items-center gap-2 rounded-lg text-sm transition-all hover:bg-black/5 py-2',
+                'flex items-center gap-2 rounded-lg text-sm transition-all hover:bg-zinc-800/40 py-2 text-zinc-400 hover:text-zinc-200',
                 collapsed ? 'justify-center w-10 h-10 mx-auto px-0' : 'w-full px-3'
               )}
-              style={{ color: 'var(--text-muted)' }}
               title={theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}
             >
               {theme === 'dark'
@@ -373,10 +358,9 @@ export default function Layout() {
             <button
               onClick={handleLogout}
               className={cn(
-                'flex items-center gap-2 rounded-lg text-sm hover:text-red-400 hover:bg-red-500/10 transition-all py-2',
+                'flex items-center gap-2 rounded-lg text-sm hover:text-red-400 hover:bg-red-500/10 transition-all py-2 text-zinc-400',
                 collapsed ? 'justify-center w-10 h-10 mx-auto px-0' : 'w-full px-3'
               )}
-              style={{ color: 'var(--text-muted)' }}
               title="Sair"
             >
               <LogOut className="w-4 h-4 flex-shrink-0" />

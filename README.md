@@ -1,89 +1,124 @@
 # goState
-> Plataforma escalável para orquestração, execução e acompanhamento de testes automatizados E2E com Playwright.
 
-goState centraliza o fluxo de automação em um só lugar: projetos, casos de teste, scripts, execuções, agentes remotos, integrações e histórico. Foi desenhado com uma arquitetura moderna e baseada em eventos, permitindo executar testes assíncronos e em larga escala.
+> Plataforma de nível corporativo para orquestração, execução visual no Canvas e acompanhamento de testes automatizados E2E com Playwright.
 
-## Quick Start (Docker - Produção Mínima Recomendada)
+goState centraliza todo o fluxo de automação de testes: criação visual interativa via Canvas, gerenciamento de projetos, suites, scripts Playwright, execuções distribuídas, agentes remotos por WebSockets e auditoria. 
 
-A maneira mais segura e rápida de rodar o ambiente completo.
+O sistema foi redesenhado com uma interface premium e responsiva no tema **Carmesim/Vermelho (Crimson)**, suportando perfeitamente os modos escuro e claro, com um menu unificado de automação.
 
-1. **Clone o repositório** e entre na pasta:
+---
+
+## 📸 Interface & Funcionalidades
+
+### 1. Construtor Visual de Fluxo (Canvas Editor)
+Crie testes completos e lógicos simplesmente arrastando e conectando nós (Navegação Web, Consultas Postgres, Requisições HTTP, Desvios Condicionais "IF", Logs e Interrupções).
+![Canvas Editor](./docs/screenshots/canvas-editor.png)
+
+### 2. Listagem Unificada de Casos de Teste (Automação)
+Gerencie todos os seus testes do workspace de forma centralizada. Filtre por Projeto, Suíte de Teste, prioridade, status e tipo de teste.
+![Casos de Teste](./docs/screenshots/testcases-list.png)
+
+### 3. Histórico e Acompanhamento de Execuções
+Acompanhe os logs em tempo real e verifique o resultado das execuções, incluindo vídeos e capturas de tela dos testes falhos.
+![Dashboard de Execuções](./docs/screenshots/executions-dashboard.png)
+
+### 4. Editor Integrado de Scripts Playwright
+Se preferir, digite diretamente seus scripts em JavaScript/TypeScript para execução direta no Playwright.
+![Editor de Scripts](./docs/screenshots/scripts-editor.png)
+
+---
+
+## 🚀 Como Executar o Projeto
+
+### Pré-requisitos
+* Node.js (v18 ou superior)
+* npm
+* Docker & Docker Compose (para execução em containers)
+
+### 1. Clonar o Repositório
 ```bash
-git clone https://github.com/seu-user/gostate.git
+git clone https://github.com/PaulNasc/gostate.git
 cd gostate
 ```
 
-2. **Crie os arquivos de ambiente** (Obrigatório)
-Crie um arquivo `.env` na raiz (veja a seção [Configuração](#configuração) para mais detalhes):
-```env
-# URL externa (browser chamando API)
-VITE_API_BASE=http://localhost:4000
-# URL interna (agente dentro do docker)
-INTERNAL_BACKEND_URL=http://backend:4000
-# CORS
-CORS_ORIGIN=http://localhost:5173
+---
 
-DEFAULT_AGENT_TOKEN=gostate-dev-agent-token-local-compose-2024
-```
+### Opção A: Executar Localmente em Desenvolvimento (Sem Docker)
 
-3. **Suba o sistema:**
+Esta é a forma recomendada para alterar o código e ver as alterações em tempo real.
+
+1. **Instalar Dependências na Raiz (Instala tudo via Workspace)**
+   ```bash
+   npm install
+   ```
+
+2. **Configurar as Variáveis de Ambiente**
+   Crie um arquivo `.env` na raiz do projeto (copie de `.env.example`):
+   ```env
+   # API URL
+   VITE_API_BASE=http://localhost:4000
+   INTERNAL_BACKEND_URL=http://localhost:4000
+   CORS_ORIGIN=http://localhost:5173
+   
+   DEFAULT_AGENT_TOKEN=gostate-dev-agent-token-local-compose-2024
+   ```
+
+3. **Executar Todos os Serviços Simultaneamente**
+   ```bash
+   npm run dev:all
+   ```
+   *Este comando sobe simultaneamente: o Backend (porta 4000), o Frontend principal (porta 5173) e o Admin (porta 4001).*
+
+---
+
+### Opção B: Executar Completo com Docker Compose (Modo Produção/Demo)
+
+1. **Configurar as Variáveis de Ambiente**
+   Crie o arquivo `.env` na raiz do projeto:
+   ```env
+   VITE_API_BASE=http://localhost:4000
+   INTERNAL_BACKEND_URL=http://backend:4000
+   CORS_ORIGIN=http://localhost:5173
+   DEFAULT_AGENT_TOKEN=gostate-dev-agent-token-local-compose-2024
+   ```
+
+2. **Construir e Iniciar os Containers**
+   ```bash
+   docker compose up -d --build
+   ```
+
+---
+
+## 🔐 Acesso e Credenciais Iniciais
+
+Após iniciar os serviços, acesse os painéis correspondentes:
+
+| URL | Componente | Descrição |
+|-----|------------|-----------|
+| **http://localhost:5173** | **Frontend (App)** | Painel do Usuário (Projetos, Canvas, Execuções) |
+| **http://localhost:4001** | **Admin Console** | Painel Administrativo (Gerenciador de Agentes) |
+| **http://localhost:4000** | **Backend API** | Documentação e API Engine |
+
+* **Usuário Admin Padrão:** `admin@gostate.dev`
+* **Senha:** `Admin@123`
+
+---
+
+## 🛠️ Estrutura do Monorepo
+
+* `/backend` - Servidor Express, banco SQLite (better-sqlite3) e comunicação em tempo real via Socket.IO.
+* `/frontend` - Interface de Usuário moderna em React, Vite, Tailwind CSS e React Flow.
+* `/admin` - Painel de administração geral de agentes e configurações de sistema.
+* `/agent` - Executor de testes Playwright e Puppeteer com log stream ativo.
+* `/docs` - Manuais técnicos e de arquitetura do goState.
+
+---
+
+## 🧪 Rodando Testes Automatizados (Backend)
 ```bash
-docker compose up -d --build
+cd backend
+npm test
 ```
 
-O banco SQLite será criado automaticamente e semeado com um administrador e um agente local padrão.
-
-## Acesso Inicial
-
-| URL | O que é |
-|-----|---------|
-| http://localhost:5173 | Frontend principal (Gerenciador de Testes) |
-| http://localhost:4001 | Painel Administrativo (Gerenciador de Agentes e Configurações) |
-| http://localhost:4000 | API Backend |
-
-**Credenciais padrão de Admin:** 
-- Email: `admin@gostate.dev` 
-- Senha: `Admin@123`
-
-## Features
-
-- **Construtor Visual e Scripting:** Crie testes arrastando passos (Clicks, Gotos) ou digitando diretamente scripts Playwright.
-- **Isolamento de Agentes:** Rode os testes de forma segura em agentes remotos conectados via WebSockets (Socket.IO).
-- **Log Streaming em Tempo Real:** Acompanhe a execução do teste como se estivesse na máquina hospedeira.
-- **Artefatos Automáticos:** Capturas de tela e vídeos são gravados por execução.
-- **Agendamentos (Cron):** Dispare execuções automaticamente e em paralelo (escalável até N agentes).
-
-## Configuração
-
-Principais variáveis de ambiente no arquivo `.env` global:
-
-| Variável | Descrição | Padrão Recomendado |
-|----------|-------------|---------|
-| `VITE_API_BASE` | URL do backend para acesso via Browser | `http://localhost:4000` |
-| `INTERNAL_BACKEND_URL` | URL do backend para a rede do Docker (usada pelo Agent) | `http://backend:4000` |
-| `CORS_ORIGIN` | Domínio do frontend para CORS | `http://localhost:5173` |
-| `ADMIN_EMAIL` | Email do administrador padrão | `admin@gostate.dev` |
-| `ADMIN_PASSWORD` | Senha do administrador padrão | `Admin@123` |
-| `JWT_SECRET` | Chave de segurança para tokens (OBRIGATÓRIO EM PROD) | — |
-| `ARTIFACT_RETENTION_DAYS` | Dias antes de deletar logs e vídeos | `30` |
-
-## Estrutura do Monorepo
-
-```
-gostate/
-├── backend/    Express + better-sqlite3 + Socket.IO   (motor, API)
-├── frontend/   React + Vite + TailwindCSS             (usuário)
-├── admin/      React + Vite + TailwindCSS             (sistema)
-├── agent/      Node.js + Playwright                   (executor isolado)
-├── docs/       Documentações (API, Arquitetura)
-└── data/       Volume persistente do Docker (Banco de dados e artefatos)
-```
-
-## Documentation
-
-- [API Reference](./docs/api.md)
-- [Architecture & Flow](./docs/architecture.md)
-
-## License
-
-MIT
+## 📄 Licença
+Distribuído sob a licença MIT. Veja `LICENSE` para mais informações.
