@@ -17,7 +17,9 @@ import ReactFlow, {
   NodeProps,
   Connection,
   Edge,
-  MarkerType
+  MarkerType,
+  useReactFlow,
+  ReactFlowProvider
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import {
@@ -320,6 +322,14 @@ const COLOR_MAP: Record<string, string> = {
 };
 
 export default function TestCaseEditorPage() {
+  return (
+    <ReactFlowProvider>
+      <TestCaseEditorPageContent />
+    </ReactFlowProvider>
+  );
+}
+
+function TestCaseEditorPageContent() {
   const { suiteId, tcId } = useParams<{ suiteId: string; tcId: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -344,6 +354,14 @@ export default function TestCaseEditorPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // Refs and states for Interactive Node Picker and Quick Edit
+  const reactFlowWrapper = useRef<HTMLDivElement>(null);
+  const connectingNodeRef = useRef<{ nodeId: string; handleId: string | null; handleType: string } | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
+  const [quickEditNodeId, setQuickEditNodeId] = useState<string | null>(null);
+
+  const reactFlowInstance = useReactFlow();
 
   // Dialog and execution settings
   const [showRunModal, setShowRunModal] = useState(false);
@@ -495,6 +513,89 @@ export default function TestCaseEditorPage() {
     [setEdges]
   );
 
+  const onConnectStart = useCallback((_: any, { nodeId, handleId, handleType }: any) => {
+    connectingNodeRef.current = { nodeId, handleId, handleType };
+  }, []);
+
+  const onConnectEnd = useCallback(
+    (event: any) => {
+      if (!connectingNodeRef.current) return;
+
+      const targetIsPane = event.target.classList.contains('react-flow__pane');
+
+      if (targetIsPane && reactFlowWrapper.current) {
+        const rect = reactFlowWrapper.current.getBoundingClientRect();
+        const position = reactFlowInstance.project({
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top,
+        });
+
+        setMenuPosition({
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top,
+          canvasX: position.x,
+          canvasY: position.y,
+        });
+      }
+    },
+    [reactFlowInstance]
+  );
+
+  const addAndConnectNode = useCallback((type: string) => {
+    if (!menuPosition || !connectingNodeRef.current) return;
+
+    const newNodeId = `node-${Date.now()}`;
+    let defaultData: any = { label: 'Novo Bloco' };
+    if (type === 'webFlow') {
+      defaultData = { label: 'Navegação Web', url: 'https://', steps: [] };
+    } else if (type === 'ifCondition') {
+      defaultData = { label: 'Se (Condição)', selector: '' };
+    } else if (type === 'postgresQuery') {
+      defaultData = { label: 'Consulta Postgres', query: 'SELECT * FROM users;', variableName: 'dbUser', connectionString: '' };
+    } else if (type === 'httpCall') {
+      defaultData = { label: 'API Call', method: 'GET', url: 'https://api.exemplo.com', body: '', variableName: 'apiResult' };
+    } else if (type === 'logNode') {
+      defaultData = { label: 'Console Log', message: 'Mensagem de log...' };
+    } else if (type === 'stopAndFail') {
+      defaultData = { label: 'Falha do Fluxo', message: 'Erro na validação do fluxo' };
+    }
+
+    const newNode = {
+      id: newNodeId,
+      type,
+      position: { x: menuPosition.canvasX, y: menuPosition.canvasY },
+      data: defaultData,
+    };
+
+    setNodes((nds) => [...nds, newNode]);
+    setSelectedNodeId(newNodeId);
+
+    const { nodeId, handleId, handleType } = connectingNodeRef.current;
+    const newEdge: any = {
+      id: `e-${nodeId}-${newNodeId}`,
+      source: handleType === 'source' ? nodeId : newNodeId,
+      target: handleType === 'source' ? newNodeId : nodeId,
+      animated: true,
+      style: { stroke: 'var(--primary)', strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: 'var(--primary)' }
+    };
+    if (handleType === 'source' && handleId) {
+      newEdge.sourceHandle = handleId;
+    } else if (handleType === 'target' && handleId) {
+      newEdge.targetHandle = handleId;
+    }
+
+    setEdges((eds) => addEdge(newEdge, eds));
+    setDirty(true);
+    setMenuPosition(null);
+  }, [menuPosition, setNodes, setEdges]);
+
+  useEffect(() => {
+    const handleClose = () => setMenuPosition(null);
+    window.addEventListener('click', handleClose);
+    return () => window.removeEventListener('click', handleClose);
+  }, []);
+
   const addNodeToCanvas = (type: string) => {
     const id = `node-${Date.now()}`;
     const x = 250 + (nodes.length * 20) % 200;
@@ -611,6 +712,7 @@ export default function TestCaseEditorPage() {
 
   // Node parameter updates (Right configuration panel)
   const selectedNode = nodes.find((n: any) => n.id === selectedNodeId);
+  const quickEditNode = nodes.find((n: any) => n.id === quickEditNodeId);
 
   const updateNodeData = (nodeId: string, key: string, val: any) => {
     setNodes((nds) =>
@@ -822,13 +924,16 @@ export default function TestCaseEditorPage() {
             </div>
 
             {/* React Flow Graph Engine */}
-            <div className="flex-1 h-full bg-[#0a0d14]">
+            <div ref={reactFlowWrapper} className="flex-1 h-full bg-[#0a0d14] relative">
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
+                onConnectStart={onConnectStart}
+                onConnectEnd={onConnectEnd}
+                onNodeDoubleClick={(_, node) => setQuickEditNodeId(node.id)}
                 nodeTypes={customNodeTypes}
                 onNodeClick={(_, node) => setSelectedNodeId(node.id)}
                 onPaneClick={() => setSelectedNodeId(null)}
@@ -838,6 +943,78 @@ export default function TestCaseEditorPage() {
                 <Controls />
                 <MiniMap style={{ background: 'var(--surface-1)', border: '1px solid var(--border)' }} />
               </ReactFlow>
+
+              {/* Floating Contextual Node Picker Menu */}
+              {menuPosition && (
+                <div
+                  className="absolute z-50 border rounded-xl shadow-glow p-2 w-48 space-y-1 animate-in fade-in zoom-in-95 duration-100"
+                  style={{
+                    left: menuPosition.x,
+                    top: menuPosition.y,
+                    backgroundColor: 'var(--surface-1)',
+                    borderColor: 'var(--border)'
+                  }}
+                  onClick={(e) => e.stopPropagation()} // Prevent closing immediately on self click
+                >
+                  <div className="text-[10px] uppercase font-bold text-text-muted px-2 py-1 border-b border-border mb-1" style={{ borderColor: 'var(--border)' }}>
+                    Criar e Conectar Nó
+                  </div>
+                  <button
+                    onClick={() => addAndConnectNode('webFlow')}
+                    className="w-full text-left text-xs px-2.5 py-1.5 hover:bg-surface-2 rounded-lg flex items-center gap-2 text-text transition-colors"
+                  >
+                    <div className="w-4 h-4 rounded bg-cyan-500/10 flex items-center justify-center border border-cyan-500/20 text-cyan-400">
+                      <Globe className="w-2.5 h-2.5" />
+                    </div>
+                    Fluxo Web
+                  </button>
+                  <button
+                    onClick={() => addAndConnectNode('ifCondition')}
+                    className="w-full text-left text-xs px-2.5 py-1.5 hover:bg-surface-2 rounded-lg flex items-center gap-2 text-text transition-colors"
+                  >
+                    <div className="w-4 h-4 rounded bg-amber-500/10 flex items-center justify-center border border-amber-500/20 text-amber-400">
+                      <GitBranch className="w-2.5 h-2.5" />
+                    </div>
+                    Bloco Se
+                  </button>
+                  <button
+                    onClick={() => addAndConnectNode('postgresQuery')}
+                    className="w-full text-left text-xs px-2.5 py-1.5 hover:bg-surface-2 rounded-lg flex items-center gap-2 text-text transition-colors"
+                  >
+                    <div className="w-4 h-4 rounded bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20 text-emerald-400">
+                      <Database className="w-2.5 h-2.5" />
+                    </div>
+                    PostgreSQL
+                  </button>
+                  <button
+                    onClick={() => addAndConnectNode('httpCall')}
+                    className="w-full text-left text-xs px-2.5 py-1.5 hover:bg-surface-2 rounded-lg flex items-center gap-2 text-text transition-colors"
+                  >
+                    <div className="w-4 h-4 rounded bg-purple-500/10 flex items-center justify-center border border-purple-500/20 text-purple-400">
+                      <Globe className="w-2.5 h-2.5" />
+                    </div>
+                    Chamada API
+                  </button>
+                  <button
+                    onClick={() => addAndConnectNode('logNode')}
+                    className="w-full text-left text-xs px-2.5 py-1.5 hover:bg-surface-2 rounded-lg flex items-center gap-2 text-text transition-colors"
+                  >
+                    <div className="w-4 h-4 rounded bg-blue-500/10 flex items-center justify-center border border-blue-500/20 text-blue-400">
+                      <Terminal className="w-2.5 h-2.5" />
+                    </div>
+                    Log
+                  </button>
+                  <button
+                    onClick={() => addAndConnectNode('stopAndFail')}
+                    className="w-full text-left text-xs px-2.5 py-1.5 hover:bg-surface-2 rounded-lg flex items-center gap-2 text-text transition-colors"
+                  >
+                    <div className="w-4 h-4 rounded bg-red-500/10 flex items-center justify-center border border-red-500/20 text-red-400">
+                      <XCircle className="w-2.5 h-2.5" />
+                    </div>
+                    Falhar
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Right Node Parameter Config Panel */}
@@ -885,31 +1062,91 @@ export default function TestCaseEditorPage() {
                         >
                           <Plus className="w-3.5 h-3.5" /> Adicionar Passo
                         </button>
-                        <div className="space-y-1 max-h-48 overflow-y-auto">
-                          {(selectedNode.data?.steps || []).map((st: any, sIdx: number) => (
-                            <div key={sIdx} className="flex items-center gap-2 p-1.5 bg-surface-2 border border-border rounded text-[11px]">
-                              <span className="font-mono text-cyan-400">{st.type}</span>
-                              <input
-                                className="bg-transparent outline-none flex-1 font-mono text-[10px]"
-                                value={st.params?.selector || st.params?.url || ''}
-                                onChange={(e) => {
-                                  const cSteps = [...(selectedNode.data?.steps || [])];
-                                  const paramKey = st.type === 'goto' ? 'url' : 'selector';
-                                  cSteps[sIdx] = { ...st, params: { ...st.params, [paramKey]: e.target.value } };
-                                  updateNodeData(selectedNode.id, 'steps', cSteps);
-                                }}
-                              />
-                              <button
-                                onClick={() => {
-                                  const cSteps = (selectedNode.data?.steps || []).filter((_: any, idx: number) => idx !== sIdx);
-                                  updateNodeData(selectedNode.id, 'steps', cSteps);
-                                }}
-                                className="text-red-400 hover:text-red-500"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))}
+                        <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+                          {(selectedNode.data?.steps || []).map((st: any, sIdx: number) => {
+                            const meta = getStepMeta(st.type);
+                            const Icon = meta?.icon || Globe;
+                            const colorClass = meta ? COLOR_MAP[meta.color] : COLOR_MAP.blue;
+                            return (
+                              <div key={sIdx} className="p-2.5 bg-surface-2 border border-border rounded-lg space-y-2 text-xs">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-1.5 font-medium">
+                                    <div className={`w-5 h-5 rounded flex items-center justify-center border ${colorClass}`}>
+                                      <Icon className="w-2.5 h-2.5" />
+                                    </div>
+                                    <select
+                                      className="bg-transparent border-none outline-none font-semibold text-text max-w-[130px] p-0 text-xs"
+                                      value={st.type}
+                                      style={{ color: 'var(--text)', backgroundColor: 'transparent' }}
+                                      onChange={(e) => {
+                                        const cSteps = [...(selectedNode.data?.steps || [])];
+                                        const newType = e.target.value;
+                                        const newMeta = getStepMeta(newType);
+                                        const newParams: Record<string, any> = {};
+                                        newMeta?.fields.forEach(f => {
+                                          newParams[f.key] = st.params?.[f.key] || (f.type === 'number' ? '1000' : f.type === 'select' ? ((f as any).options?.[0] || '') : '');
+                                        });
+                                        cSteps[sIdx] = { type: newType, params: newParams };
+                                        updateNodeData(selectedNode.id, 'steps', cSteps);
+                                      }}
+                                    >
+                                      {STEP_CATALOG.flatMap(g => g.items).map(item => (
+                                        <option key={item.type} value={item.type} style={{ background: 'var(--surface-1)', color: 'var(--text)' }}>
+                                          {item.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      const cSteps = (selectedNode.data?.steps || []).filter((_: any, idx: number) => idx !== sIdx);
+                                      updateNodeData(selectedNode.id, 'steps', cSteps);
+                                    }}
+                                    className="text-red-400 hover:text-red-500 p-0.5"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+
+                                {meta?.fields.map((field: any) => (
+                                  <div key={field.key} className="space-y-0.5">
+                                    <label className="text-[9px] uppercase font-bold text-text-muted">{field.label}</label>
+                                    {field.type === 'select' ? (
+                                      <select
+                                        className="input w-full py-1 px-2 text-[11px]"
+                                        value={st.params?.[field.key] || ''}
+                                        onChange={(e) => {
+                                          const cSteps = [...(selectedNode.data?.steps || [])];
+                                          cSteps[sIdx] = {
+                                            ...st,
+                                            params: { ...st.params, [field.key]: e.target.value }
+                                          };
+                                          updateNodeData(selectedNode.id, 'steps', cSteps);
+                                        }}
+                                      >
+                                        {field.options?.map((o: string) => <option key={o} value={o}>{o}</option>)}
+                                      </select>
+                                    ) : (
+                                      <input
+                                        className="input w-full py-1 px-2 text-[11px] font-mono"
+                                        type={field.type === 'number' ? 'number' : 'text'}
+                                        placeholder={field.placeholder}
+                                        value={st.params?.[field.key] || ''}
+                                        onChange={(e) => {
+                                          const cSteps = [...(selectedNode.data?.steps || [])];
+                                          cSteps[sIdx] = {
+                                            ...st,
+                                            params: { ...st.params, [field.key]: e.target.value }
+                                          };
+                                          updateNodeData(selectedNode.id, 'steps', cSteps);
+                                        }}
+                                      />
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     </>
@@ -1277,6 +1514,138 @@ export default function TestCaseEditorPage() {
               >
                 {runExec.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 Disparar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick edit node modal */}
+      {quickEditNode && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-surface-1 border border-border rounded-xl w-full max-w-md shadow-glow overflow-hidden animate-in fade-in zoom-in-95 duration-150" style={{ backgroundColor: 'var(--surface-1)', borderColor: 'var(--border)' }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border" style={{ borderColor: 'var(--border)' }}>
+              <span className="text-sm font-bold text-text uppercase tracking-wider flex items-center gap-2" style={{ color: 'var(--text)' }}>
+                <Zap className="w-4 h-4 text-cyan-400" /> Edição Rápida: {quickEditNode.data?.label || 'Bloco'}
+              </span>
+              <button onClick={() => setQuickEditNodeId(null)} className="btn-ghost p-1 rounded hover:bg-surface-2 text-text-muted hover:text-text">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="space-y-1">
+                <label className="text-[10px] uppercase font-bold text-text-muted">Etiqueta do Bloco</label>
+                <input
+                  className="input w-full"
+                  value={quickEditNode.data?.label || ''}
+                  onChange={(e) => updateNodeData(quickEditNode.id, 'label', e.target.value)}
+                />
+              </div>
+
+              {quickEditNode.type === 'webFlow' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-muted">URL do Navegador</label>
+                  <input
+                    className="input w-full"
+                    value={quickEditNode.data?.url || ''}
+                    onChange={(e) => updateNodeData(quickEditNode.id, 'url', e.target.value)}
+                    placeholder="https://exemplo.com"
+                  />
+                </div>
+              )}
+
+              {quickEditNode.type === 'ifCondition' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-muted">Seletor de Elemento Visível</label>
+                  <input
+                    className="input w-full font-mono"
+                    value={quickEditNode.data?.selector || ''}
+                    onChange={(e) => updateNodeData(quickEditNode.id, 'selector', e.target.value)}
+                    placeholder="Ex: #login-button"
+                  />
+                </div>
+              )}
+
+              {quickEditNode.type === 'postgresQuery' && (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-muted">String de Conexão</label>
+                    <input
+                      className="input w-full font-mono text-xs"
+                      value={quickEditNode.data?.connectionString || ''}
+                      onChange={(e) => updateNodeData(quickEditNode.id, 'connectionString', e.target.value)}
+                      placeholder="postgresql://user:pass@host:5432/db"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-text-muted">Consulta SQL</label>
+                    <textarea
+                      className="input w-full font-mono text-xs h-20"
+                      value={quickEditNode.data?.query || ''}
+                      onChange={(e) => updateNodeData(quickEditNode.id, 'query', e.target.value)}
+                      placeholder="SELECT * FROM users;"
+                    />
+                  </div>
+                </>
+              )}
+
+              {quickEditNode.type === 'httpCall' && (
+                <>
+                  <div className="flex gap-2">
+                    <div className="w-1/3 space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-text-muted">Método</label>
+                      <select
+                        className="input w-full"
+                        value={quickEditNode.data?.method || 'GET'}
+                        onChange={(e) => updateNodeData(quickEditNode.id, 'method', e.target.value)}
+                      >
+                        <option>GET</option>
+                        <option>POST</option>
+                        <option>PUT</option>
+                        <option>DELETE</option>
+                      </select>
+                    </div>
+                    <div className="flex-1 space-y-1">
+                      <label className="text-[10px] uppercase font-bold text-text-muted">URL</label>
+                      <input
+                        className="input w-full"
+                        value={quickEditNode.data?.url || ''}
+                        onChange={(e) => updateNodeData(quickEditNode.id, 'url', e.target.value)}
+                        placeholder="https://api.exemplo.com"
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {quickEditNode.type === 'logNode' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-muted">Mensagem a Registrar</label>
+                  <input
+                    className="input w-full"
+                    value={quickEditNode.data?.message || ''}
+                    onChange={(e) => updateNodeData(quickEditNode.id, 'message', e.target.value)}
+                  />
+                </div>
+              )}
+
+              {quickEditNode.type === 'stopAndFail' && (
+                <div className="space-y-1">
+                  <label className="text-[10px] uppercase font-bold text-text-muted">Mensagem do Erro</label>
+                  <input
+                    className="input w-full"
+                    value={quickEditNode.data?.message || ''}
+                    onChange={(e) => updateNodeData(quickEditNode.id, 'message', e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-4 bg-surface-2 border-t border-border" style={{ borderColor: 'var(--border)' }}>
+              <button
+                onClick={() => setQuickEditNodeId(null)}
+                className="btn-primary px-4 py-2 text-xs font-semibold"
+              >
+                Concluir
               </button>
             </div>
           </div>
