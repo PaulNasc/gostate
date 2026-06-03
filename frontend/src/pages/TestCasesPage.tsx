@@ -272,7 +272,7 @@ export default function TestCasesPage() {
         </div>
       ) : testCases.length === 0 ? (
         <div className="card p-12 text-center" style={{ background: 'var(--surface-1)' }}>
-          <TestTube2 className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+          <TestTube2 className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-muted)' }} />
           <p className="font-semibold text-lg" style={{ color: 'var(--text)' }}>Nenhum caso de teste encontrado</p>
           <p className="text-sm mt-1 mb-4" style={{ color: 'var(--text-muted)' }}>Crie um novo caso de teste no Canvas para começar a automatizar.</p>
           <button className="btn-primary flex items-center gap-2 mx-auto" onClick={handleOpenCreate}>
@@ -320,7 +320,10 @@ export default function TestCasesPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 mt-3">
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-300 font-mono border border-zinc-700">
+                  <span
+                    className="text-[10px] px-2 py-0.5 rounded-full font-mono border"
+                    style={{ background: 'var(--surface-2)', color: 'var(--text-muted)', borderColor: 'var(--border)' }}
+                  >
                     {tc.type.toUpperCase()}
                   </span>
                   <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${getPriorityBadgeClass(tc.priority)}`}>

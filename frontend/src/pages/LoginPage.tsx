@@ -33,13 +33,13 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <GoStateIcon size={72} className="mb-4" />
-          <h1 className="text-2xl tracking-tight text-white">go<span className="font-bold">State</span></h1>
-          <p className="text-sm text-slate-500 mt-1">Test Automation Platform</p>
+          <h1 className="text-2xl tracking-tight" style={{ color: 'var(--text)' }}>go<span className="font-bold">State</span></h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Test Automation Platform</p>
         </div>
 
         {/* Card */}
         <div className="card p-6 shadow-card">
-          <h2 className="text-lg font-semibold text-white mb-6">Entrar na plataforma</h2>
+          <h2 className="text-lg font-semibold mb-6" style={{ color: 'var(--text)' }}>Entrar na plataforma</h2>
 
           {error && (
             <div className="mb-4 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400 text-sm">

@@ -454,7 +454,7 @@ export default function ScriptsPage() {
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
           <div className="card w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-white">Novo Script</h3>
+              <h3 className="font-semibold" style={{ color: 'var(--text)' }}>Novo Script</h3>
               <button onClick={() => setShowNew(false)} className="btn-ghost p-1"><X className="w-4 h-4" /></button>
             </div>
             <div className="space-y-3">
@@ -503,7 +503,7 @@ export default function ScriptsPage() {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                <h3 className="font-semibold text-white">Playwright Recorder</h3>
+                <h3 className="font-semibold" style={{ color: 'var(--text)' }}>Playwright Recorder</h3>
               </div>
               <button onClick={() => setShowRecorder(false)} className="btn-ghost p-1"><X className="w-4 h-4" /></button>
             </div>
@@ -652,7 +652,7 @@ test('test', async ({ page }) => {
           <div className="card w-full max-w-md p-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="font-semibold text-white">Executar Script</h3>
+                <h3 className="font-semibold" style={{ color: 'var(--text)' }}>Executar Script</h3>
                 <p className="text-xs text-slate-500 mt-0.5 font-mono">{selected.filename}</p>
               </div>
               <button onClick={() => setShowRunModal(false)} className="btn-ghost p-1"><X className="w-4 h-4" /></button>

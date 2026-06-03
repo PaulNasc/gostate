@@ -180,6 +180,7 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     return (localStorage.getItem('gostate:theme') as 'dark' | 'light') || 'dark';
   });
@@ -203,175 +204,269 @@ export default function Layout() {
 
   const handleLogout = () => { logout(); navigate('/login'); };
 
+  const isDark = theme === 'dark';
+
+  // Theme-aware sidebar colors
+  const sidebarBg = isDark ? 'var(--surface-1)' : '#ffffff';
+  const sidebarBorder = isDark ? 'var(--border)' : '#e4e4e7';
+  const textDefault = isDark ? '#a1a1aa' : '#71717a';
+  const textHover = isDark ? '#e4e4e7' : '#18181b';
+  const textActive = isDark ? '#ffffff' : '#09090b';
+  const activeBg = isDark ? 'rgba(225,29,72,0.12)' : 'rgba(225,29,72,0.08)';
+  const hoverBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)';
+  const submenuBorder = isDark ? '#27272a' : '#e4e4e7';
+
+  const navLinkClass = (isActive: boolean, isCollapsed: boolean = false) =>
+    cn(
+      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group',
+      isCollapsed && 'justify-center px-0',
+    );
+
+  const navLinkStyle = (isActive: boolean) => ({
+    background: isActive ? activeBg : 'transparent',
+    color: isActive ? textActive : textDefault,
+    fontWeight: isActive ? 500 : 400,
+  });
+
+  const renderNavContent = () => (
+    <>
+      <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
+        {navItems.map((item) => {
+          if (item.adminOnly && user?.role !== 'admin') return null;
+
+          if (item.submenu) {
+            if (collapsed && !mobileOpen) {
+              return item.submenu.map((sub) => (
+                <NavLink
+                  key={sub.to}
+                  to={sub.to}
+                  className={({ isActive }) => navLinkClass(isActive, true)}
+                  style={({ isActive }) => navLinkStyle(isActive)}
+                  title={sub.label}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {({ isActive }) => (
+                    <span className="flex-shrink-0"><sub.Icon active={isActive} /></span>
+                  )}
+                </NavLink>
+              ));
+            }
+
+            const isAnySubActive = item.submenu.some(sub => window.location.pathname.startsWith(sub.to));
+            return (
+              <div key={item.label} className="space-y-0.5">
+                <button
+                  onClick={toggleAutomation}
+                  className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group"
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    outline: 'none',
+                    color: isAnySubActive ? textActive : textDefault,
+                    fontWeight: isAnySubActive ? 500 : 400,
+                  }}
+                  onMouseEnter={e => { if (!isAnySubActive) { e.currentTarget.style.background = hoverBg; e.currentTarget.style.color = textHover; }}}
+                  onMouseLeave={e => { if (!isAnySubActive) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = textDefault; }}}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex-shrink-0">
+                      <item.Icon active={isAnySubActive} />
+                    </span>
+                    <span>{item.label}</span>
+                  </div>
+                  <ChevronRight
+                    className={cn(
+                      'w-3.5 h-3.5 transition-transform duration-200',
+                      automationOpen && 'transform rotate-90'
+                    )}
+                    style={{ color: isDark ? '#52525b' : '#a1a1aa' }}
+                  />
+                </button>
+                {automationOpen && (
+                  <div className="pl-6 space-y-0.5 border-l ml-5" style={{ borderColor: submenuBorder }}>
+                    {item.submenu.map((sub) => (
+                      <NavLink
+                        key={sub.to}
+                        to={sub.to}
+                        className={({ isActive }) =>
+                          cn(
+                            'flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs transition-all duration-150 group',
+                          )
+                        }
+                        style={({ isActive }) => navLinkStyle(isActive)}
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        {({ isActive }) => (
+                          <>
+                            <span className="flex-shrink-0"><sub.Icon active={isActive} /></span>
+                            <span>{sub.label}</span>
+                          </>
+                        )}
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          return (
+            <NavLink
+              key={item.to}
+              to={item.to!}
+              className={({ isActive }) => navLinkClass(isActive, collapsed && !mobileOpen)}
+              style={({ isActive }) => navLinkStyle(isActive)}
+              title={collapsed && !mobileOpen ? item.label : undefined}
+              onClick={() => setMobileOpen(false)}
+            >
+              {({ isActive }) => (
+                <>
+                  <span className="flex-shrink-0"><item.Icon active={isActive} /></span>
+                  {((!collapsed || mobileOpen) && <span>{item.label}</span>)}
+                </>
+              )}
+            </NavLink>
+          );
+        })}
+      </nav>
+
+      {/* User section */}
+      <div className="p-2 border-t" style={{ borderColor: sidebarBorder }}>
+        {(!collapsed || mobileOpen) && (
+          <div className="px-3 py-2 mb-1">
+            <p className="text-xs font-semibold truncate" style={{ color: textActive }}>
+              {user?.role === 'admin' ? 'Administrador' : user?.role === 'tester' ? 'Testador' : user?.role}
+            </p>
+            <p className="text-[10px] truncate mt-0.5" style={{ color: textDefault }}>{user?.email}</p>
+          </div>
+        )}
+        <div className={cn('flex gap-1', collapsed && !mobileOpen ? 'flex-col items-center' : 'flex-col')}>
+          <button
+            onClick={toggleTheme}
+            className={cn(
+              'flex items-center gap-2 rounded-lg text-sm transition-all py-2',
+              collapsed && !mobileOpen ? 'justify-center w-10 h-10 mx-auto px-0' : 'w-full px-3'
+            )}
+            style={{ color: textDefault }}
+            onMouseEnter={e => { e.currentTarget.style.background = hoverBg; e.currentTarget.style.color = textHover; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = textDefault; }}
+            title={isDark ? 'Tema Claro' : 'Tema Escuro'}
+          >
+            {isDark
+              ? <Sun className="w-4 h-4 flex-shrink-0 text-yellow-400" />
+              : <Moon className="w-4 h-4 flex-shrink-0 text-indigo-500" />}
+            {(!collapsed || mobileOpen) && (
+              <span>{isDark ? 'Tema Claro' : 'Tema Escuro'}</span>
+            )}
+          </button>
+          <button
+            onClick={handleLogout}
+            className={cn(
+              'flex items-center gap-2 rounded-lg text-sm transition-all py-2',
+              collapsed && !mobileOpen ? 'justify-center w-10 h-10 mx-auto px-0' : 'w-full px-3'
+            )}
+            style={{ color: textDefault }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; e.currentTarget.style.color = '#f87171'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = textDefault; }}
+            title="Sair"
+          >
+            <LogOut className="w-4 h-4 flex-shrink-0" />
+            {(!collapsed || mobileOpen) && <span>Sair</span>}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+
   return (
     <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
-      {/* Sidebar */}
+      {/* Mobile hamburger */}
+      <button
+        onClick={() => setMobileOpen(!mobileOpen)}
+        className="md:hidden fixed top-3 left-3 z-50 p-2 rounded-lg transition-colors"
+        style={{
+          background: isDark ? 'var(--surface-1)' : '#ffffff',
+          border: `1px solid ${sidebarBorder}`,
+          color: textDefault,
+        }}
+        aria-label="Abrir menu"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40"
+          style={{ background: 'rgba(0,0,0,0.5)' }}
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Sidebar — desktop */}
       <aside
         className={cn(
-          'flex flex-col h-full border-r transition-all duration-300 ease-in-out flex-shrink-0 bg-zinc-950 border-zinc-800',
+          'hidden md:flex flex-col h-full border-r transition-all duration-300 ease-in-out flex-shrink-0',
           collapsed ? 'w-14' : 'w-56'
         )}
+        style={{ background: sidebarBg, borderColor: sidebarBorder }}
       >
-        {/* Logo */}
-        <div className={cn('flex items-center h-14 border-b flex-shrink-0 px-3 border-zinc-800', collapsed ? 'justify-center' : 'gap-2')}>
+        {/* Logo header */}
+        <div
+          className={cn('flex items-center h-14 border-b flex-shrink-0 px-3', collapsed ? 'justify-center' : 'gap-2')}
+          style={{ borderColor: sidebarBorder }}
+        >
           <GoStateIcon size={32} className="flex-shrink-0" />
           {!collapsed && (
-            <span className="text-base tracking-tight flex-1 truncate text-zinc-100">
-              go<span className="font-bold text-rose-500">State</span>
+            <span className="text-base tracking-tight flex-1 truncate" style={{ color: textActive }}>
+              go<span className="font-bold" style={{ color: 'var(--primary)' }}>State</span>
             </span>
           )}
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="p-1 rounded transition-colors hover:bg-zinc-800/50 flex-shrink-0 text-zinc-400 hover:text-zinc-200"
+            className="p-1 rounded transition-colors flex-shrink-0"
+            style={{ color: textDefault }}
+            onMouseEnter={e => { e.currentTarget.style.background = hoverBg; e.currentTarget.style.color = textHover; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = textDefault; }}
           >
             {collapsed ? <ChevronRight className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
           </button>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 p-2 space-y-0.5 overflow-y-auto">
-          {navItems.map((item) => {
-            if (item.adminOnly && user?.role !== 'admin') return null;
+        {renderNavContent()}
+      </aside>
 
-            if (item.submenu) {
-              if (collapsed) {
-                return item.submenu.map((sub) => (
-                  <NavLink
-                    key={sub.to}
-                    to={sub.to}
-                    className={({ isActive }) =>
-                      cn(
-                        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group justify-center px-0',
-                        isActive ? 'bg-rose-500/15 text-white font-medium' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
-                      )
-                    }
-                    title={sub.label}
-                  >
-                    {({ isActive }) => (
-                      <span className="flex-shrink-0"><sub.Icon active={isActive} /></span>
-                    )}
-                  </NavLink>
-                ));
-              }
-
-              const isAnySubActive = item.submenu.some(sub => window.location.pathname.startsWith(sub.to));
-              return (
-                <div key={item.label} className="space-y-0.5">
-                  <button
-                    onClick={toggleAutomation}
-                    className={cn(
-                      'w-full flex items-center justify-between gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group hover:bg-zinc-800/40 text-zinc-400 hover:text-zinc-200',
-                      isAnySubActive && 'font-medium text-zinc-200'
-                    )}
-                    style={{ background: 'transparent', border: 'none', cursor: 'pointer', outline: 'none' }}
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="flex-shrink-0">
-                        <item.Icon active={isAnySubActive} />
-                      </span>
-                      <span>{item.label}</span>
-                    </div>
-                    <ChevronRight
-                      className={cn(
-                        'w-3.5 h-3.5 transition-transform duration-200 text-zinc-500',
-                        automationOpen && 'transform rotate-90 text-zinc-300'
-                      )}
-                    />
-                  </button>
-                  {automationOpen && (
-                    <div className="pl-6 space-y-0.5 border-l ml-5 border-zinc-800" style={{ borderColor: '#27272a' }}>
-                      {item.submenu.map((sub) => (
-                        <NavLink
-                          key={sub.to}
-                          to={sub.to}
-                          className={({ isActive }) =>
-                            cn(
-                              'flex items-center gap-3 px-3 py-1.5 rounded-lg text-xs transition-all duration-150 group',
-                              isActive ? 'bg-rose-500/15 text-white font-medium' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
-                            )
-                          }
-                        >
-                          {({ isActive }) => (
-                            <>
-                              <span className="flex-shrink-0"><sub.Icon active={isActive} /></span>
-                              <span>{sub.label}</span>
-                            </>
-                          )}
-                        </NavLink>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            }
-
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to!}
-                className={({ isActive }) =>
-                  cn(
-                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all duration-150 group',
-                    collapsed && 'justify-center px-0',
-                    isActive ? 'bg-rose-500/15 text-white font-medium' : 'text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200'
-                  )
-                }
-                title={collapsed ? item.label : undefined}
-              >
-                {({ isActive }) => (
-                  <>
-                    <span className="flex-shrink-0"><item.Icon active={isActive} /></span>
-                    {!collapsed && <span>{item.label}</span>}
-                  </>
-                )}
-              </NavLink>
-            );
-          })}
-        </nav>
-
-        {/* User */}
-        <div className="p-2 border-t border-zinc-800">
-          {!collapsed && (
-            <div className="px-3 py-2 mb-1">
-              <p className="text-xs font-semibold truncate text-zinc-200">
-                {user?.role === 'admin' ? 'Administrador' : user?.role === 'tester' ? 'Testador' : user?.role}
-              </p>
-              <p className="text-[10px] truncate text-zinc-500 mt-0.5">{user?.email}</p>
-            </div>
-          )}
-          <div className={cn('flex gap-1', collapsed ? 'flex-col items-center' : 'flex-col')}>
-            <button
-              onClick={toggleTheme}
-              className={cn(
-                'flex items-center gap-2 rounded-lg text-sm transition-all hover:bg-zinc-800/40 py-2 text-zinc-400 hover:text-zinc-200',
-                collapsed ? 'justify-center w-10 h-10 mx-auto px-0' : 'w-full px-3'
-              )}
-              title={theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}
-            >
-              {theme === 'dark'
-                ? <Sun className="w-4 h-4 flex-shrink-0 text-yellow-400" />
-                : <Moon className="w-4 h-4 flex-shrink-0 text-indigo-500" />}
-              {!collapsed && (
-                <span>{theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}</span>
-              )}
-            </button>
-            <button
-              onClick={handleLogout}
-              className={cn(
-                'flex items-center gap-2 rounded-lg text-sm hover:text-red-400 hover:bg-red-500/10 transition-all py-2 text-zinc-400',
-                collapsed ? 'justify-center w-10 h-10 mx-auto px-0' : 'w-full px-3'
-              )}
-              title="Sair"
-            >
-              <LogOut className="w-4 h-4 flex-shrink-0" />
-              {!collapsed && <span>Sair</span>}
-            </button>
-          </div>
+      {/* Sidebar — mobile drawer */}
+      <aside
+        className={cn(
+          'md:hidden fixed top-0 left-0 z-40 flex flex-col h-full w-64 border-r transition-transform duration-300 ease-in-out',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        )}
+        style={{ background: sidebarBg, borderColor: sidebarBorder }}
+      >
+        {/* Logo header */}
+        <div className="flex items-center h-14 border-b flex-shrink-0 px-3 gap-2" style={{ borderColor: sidebarBorder }}>
+          <GoStateIcon size={32} className="flex-shrink-0" />
+          <span className="text-base tracking-tight flex-1 truncate" style={{ color: textActive }}>
+            go<span className="font-bold" style={{ color: 'var(--primary)' }}>State</span>
+          </span>
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="p-1 rounded transition-colors flex-shrink-0"
+            style={{ color: textDefault }}
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
+
+        {renderNavContent()}
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 overflow-y-auto pt-0 md:pt-0">
+        {/* Spacer for mobile hamburger */}
+        <div className="md:hidden h-14" />
         <Outlet />
       </main>
     </div>
