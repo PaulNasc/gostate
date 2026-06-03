@@ -111,22 +111,20 @@ function Layout({ children }: { children: React.ReactNode }) {
         style={{ background: '#0d1117', borderColor: '#1e2a3a' }}
       >
         <div className={cn('flex items-center h-14 border-b flex-shrink-0 px-3', collapsed ? 'justify-center' : 'gap-2')} style={{ borderColor: '#1e2a3a' }}>
-          <svg viewBox="0 0 64 64" width="32" height="32" className="flex-shrink-0" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-              <linearGradient id="adm-g" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#c4b5fd"/>
-                <stop offset="100%" stopColor="#8b5cf6"/>
-              </linearGradient>
-              <linearGradient id="adm-s" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#c4b5fd"/>
-                <stop offset="100%" stopColor="#8b5cf6"/>
-              </linearGradient>
-            </defs>
-            <rect width="64" height="64" rx="13" fill="#0b1120"/>
-            <rect x="13" y="13" width="38" height="38" rx="11" fill="none" stroke="url(#adm-g)" strokeWidth="3.5"/>
-            <rect x="20" y="22" width="24" height="5" rx="2.5" fill="url(#adm-s)" opacity="0.95"/>
-            <rect x="20" y="30" width="18" height="5" rx="2.5" fill="url(#adm-s)" opacity="0.78"/>
-            <rect x="20" y="38" width="12" height="5" rx="2.5" fill="url(#adm-s)" opacity="0.58"/>
+          <svg viewBox="0 0 100 100" width="32" height="32" className="flex-shrink-0" xmlns="http://www.w3.org/2000/svg">
+            <rect width="100" height="100" rx="20" fill="#09090b" />
+            {/* White square — behind segment */}
+            <path d="M 48,7 Q 58,7 58,17 V 48" stroke="#ffffff" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            {/* Purple square — full (admin branding) */}
+            <path d="M 55,42 H 83 Q 93,42 93,52 V 83 Q 93,93 83,93 H 55 Q 42,93 42,83 V 55 Q 42,42 55,42 Z" stroke="#8b5cf6" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            {/* Purple internal bars */}
+            <line x1="56" y1="54" x2="56" y2="80" stroke="#8b5cf6" strokeWidth="7" strokeLinecap="round" />
+            <line x1="66" y1="70" x2="82" y2="70" stroke="#8b5cf6" strokeWidth="7" strokeLinecap="round" />
+            {/* White square — front segment */}
+            <path d="M 58,48 Q 58,58 48,58 H 17 Q 7,58 7,48 V 17 Q 7,7 17,7 H 48" stroke="#ffffff" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+            {/* White internal bars */}
+            <line x1="19" y1="28" x2="46" y2="28" stroke="#ffffff" strokeWidth="7" strokeLinecap="round" />
+            <line x1="19" y1="40" x2="38" y2="40" stroke="#ffffff" strokeWidth="7" strokeLinecap="round" />
           </svg>
           {!collapsed && (
             <div className="flex-1 min-w-0 truncate">
